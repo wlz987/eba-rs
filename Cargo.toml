@@ -1,0 +1,16 @@
+[package]
+name = "eba"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/wlz987/eba-rs"
+description = "Rust Envelope-Bus-Actor 与 Job 编排"
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
