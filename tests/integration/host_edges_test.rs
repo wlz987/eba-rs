@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::util::{
     env_gen, err_body, leaf_host, new_states, result_echo, seq, step_host, step_job,
 };
-use eba::{Bus, FinishInfo, Inbox, Job, JobHost, RequestSpec, Value};
+use eba::{FinishInfo, Job, JobHost, RequestSpec, Value};
 
 fn narrow_accept_host() -> (
     JobHost,
