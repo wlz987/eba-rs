@@ -28,12 +28,13 @@ pub(crate) fn route_result(host: &mut jobhost::JobHost, env: &Envelope) -> crate
         }
         return Ok(());
     }
-    let Some(key) = host.slots.parent_key(&env.header.cause).cloned() else {
-        if let Some(request_id) = outcome.request_id {
-            let loan_bus = host.require_loan()?.bus.clone();
-            host.registry
-                .finish_safe(&loan_bus, &host.inbox, &request_id);
-        }
+    let Some(request_id) = outcome.request_id.as_ref() else {
+        return Ok(());
+    };
+    let Some(key) = host.slots.child_key(request_id).cloned() else {
+        let loan_bus = host.require_loan()?.bus.clone();
+        host.registry
+            .finish_safe(&loan_bus, &host.inbox, request_id);
         return Ok(());
     };
     let Some(mut parent) = host.slots.take(&key) else {

@@ -253,6 +253,8 @@ impl<'a> JobCtx<'a> {
             loan.clock.now_ms() + timeout
         };
         let child_id = child.header.id.clone();
+        // 叶子槽位:子请求 id 直接认亲发起 Job(其根 id 为槽位键)
+        self.host.slots.index_child(&child_id, &self.job.root.header.id);
         self.job.inflight.insert(
             child_id.clone(),
             Inflight {

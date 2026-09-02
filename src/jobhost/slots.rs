@@ -6,6 +6,8 @@ use std::collections::HashMap;
 pub struct SlotBook {
     by_id: HashMap<EnvelopeId, Job>,
     cause_index: HashMap<EnvelopeId, EnvelopeId>,
+    /// 子请求 id → 发起 Job 槽位键(其根 id):结果按子请求 id 精确认亲(叶子槽位)。
+    child_index: HashMap<EnvelopeId, EnvelopeId>,
 }
 
 impl SlotBook {
@@ -52,8 +54,22 @@ impl SlotBook {
         Some(job)
     }
 
+    pub fn index_child(&mut self, child: &EnvelopeId, key: &EnvelopeId) {
+        self.child_index.insert(child.clone(), key.clone());
+    }
+
+    pub fn child_key(&self, child: &EnvelopeId) -> Option<&EnvelopeId> {
+        self.child_index.get(child)
+    }
+
+    fn remove_child_entries(&mut self, key: &EnvelopeId) {
+        self.child_index.retain(|_, k| k != key);
+    }
+
     pub fn place(&mut self, job: Job) {
         if job.finished {
+            let hdr = job.root.header.id.clone();
+            self.remove_child_entries(&hdr);
             return;
         }
         let hdr = job.root.header.clone();
@@ -71,10 +87,6 @@ impl SlotBook {
             return Some(cause);
         }
         None
-    }
-
-    pub fn parent_key(&self, cause: &EnvelopeId) -> Option<&EnvelopeId> {
-        self.cause_index.get(cause)
     }
 
     pub fn active_job(&self, cause: &EnvelopeId) -> Option<&Job> {
