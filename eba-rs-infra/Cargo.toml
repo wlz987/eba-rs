@@ -1,0 +1,18 @@
+[package]
+name = "eba-rs-infra"
+version = "0.1.0"
+edition = "2021"
+description = "EBA 的 no_std/alloc 端口（无 Drive）"
+keywords = ["runtime", "actor", "message", "no-std"]
+categories = ["concurrency", "no-std"]
+license = "MIT"
+readme = "README.md"
+
+[features]
+default = ["std", "uuid"]
+std = []
+uuid = ["dep:uuid", "std"]
+
+[dependencies]
+spin = "0.9"
+uuid = { version = "1", features = ["v4"], optional = true }

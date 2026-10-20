@@ -1,0 +1,16 @@
+[package]
+name = "eba-rs"
+version = "0.1.0"
+edition = "2021"
+description = "进程内、单写者、合作式的 EBA 运行时（std + tokio Drive）"
+keywords = ["runtime", "actor", "message", "single-writer"]
+categories = ["concurrency"]
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+uuid = { version = "1", features = ["v4"], optional = true }
+
+[features]
+default = ["uuid"]
