@@ -66,4 +66,3 @@ cargo run --example order -p eba-rs
 - 按 ADR-0010，仓内没有测试；回归靠类型/写法闸门、例子与根工作区的端口一致性 audit。
 - `no_std` 那一体在 panic 后不保证复位 `busy`；`Clock` 不会失败，也没有 `ClockError` 这条路。
 - 两个 crate 的源码是刻意分开的近镜像（ADR-0015），不合并、不代码生成。
-- 撤走测试之前的差异对名账见 [`HISTORY.md`](HISTORY.md)。
