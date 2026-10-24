@@ -207,7 +207,10 @@ fn main() -> Result<(), BoxError> {
     }
     let previous_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
-    let pay_cancelled = caller.cancel(&pay_root.header.id)?;
+    let pay_panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        caller.cancel(&pay_root.header.id)
+    }))
+    .is_err();
     for _ in 0..4 {
         runtime.advance()?;
     }
@@ -217,7 +220,7 @@ fn main() -> Result<(), BoxError> {
         .downcast_ref::<Call>()
         .map(|call| (call.pay_errors(), call.last_pay_error()))
         .unwrap_or((0, None));
-    if !pay_cancelled
+    if !pay_panicked
         || runtime.stats().active != 0
         || pay_errors != 1
         || last_pay.as_deref() != Some("pay boom")

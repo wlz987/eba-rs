@@ -63,6 +63,7 @@ impl Call {
             })) {
                 self.pay_errors.set(self.pay_errors.get() + 1);
                 *self.last_pay_error.borrow_mut() = Some(panic_message(payload.as_ref()));
+                std::panic::resume_unwind(payload);
             }
         }
     }
