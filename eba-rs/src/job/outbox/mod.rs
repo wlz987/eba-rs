@@ -37,6 +37,18 @@ impl Outbox {
         self.count
     }
 
+    pub fn buried(&self) -> usize {
+        self.buried.len()
+    }
+
+    fn remember_buried(&mut self, envelope: Rc<Envelope>) {
+        self.buried.push(envelope);
+        while self.buried.len() > self.limit {
+            self.buried.remove(0);
+            self.count -= 1;
+        }
+    }
+
     pub fn inspect(&self) -> OutboxLedger {
         OutboxLedger {
             count: self.count,
@@ -105,7 +117,7 @@ impl Outbox {
                 Some(group) => group,
                 None => {
                     if !self.contains(envelope) {
-                        self.buried.push(Rc::clone(envelope));
+                        self.remember_buried(Rc::clone(envelope));
                         self.count += 1;
                     }
                     return;
@@ -117,7 +129,7 @@ impl Outbox {
                 .is_none_or(|head| head.header.id != envelope.header.id)
             {
                 if !self.contains(envelope) {
-                    self.buried.push(Rc::clone(envelope));
+                    self.remember_buried(Rc::clone(envelope));
                     self.count += 1;
                 }
                 return;
@@ -137,7 +149,7 @@ impl Outbox {
             None => None,
         };
         let Some(moved) = moved else { return };
-        self.buried.push(moved);
+        self.remember_buried(moved);
         if self.groups.contains_key(&topic) {
             self.add_candidate(&topic);
             self.signal.notify(DELIVERY);
@@ -145,5 +157,41 @@ impl Outbox {
         }
         self.signal
             .set(DELIVERY, !self.candidates.borrow().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    use crate::envelope::ids::{actor_id, envelope_id};
+    use crate::envelope::{make_envelope, MakeEnvelope};
+    use crate::notify::signal::Signal;
+    use crate::Payload;
+
+    use super::Outbox;
+
+    #[test]
+    fn buried_is_bounded_by_outbox_limit() {
+        let mut outbox = Outbox::new(3, Rc::new(Signal::new()));
+        for index in 0..10u64 {
+            let envelope = Rc::new(
+                make_envelope(MakeEnvelope {
+                    topic: "out".into(),
+                    payload: Arc::new(index) as Payload,
+                    from: actor_id("test"),
+                    cause: None,
+                    id: Some(envelope_id(format!("e{index}"))),
+                    kind: "event".into(),
+                    reply_to: None,
+                    correlation_id: None,
+                })
+                .unwrap(),
+            );
+            outbox.bury(&envelope);
+        }
+        assert_eq!(outbox.buried(), 3);
+        assert_eq!(outbox.size(), 3);
     }
 }

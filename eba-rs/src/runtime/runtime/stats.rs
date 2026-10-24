@@ -9,6 +9,8 @@ pub struct HostStats {
     pub rejected: usize,
     pub cancel_errors: usize,
     pub pending_cancels: usize,
+    pub outbox: usize,
+    pub buried: usize,
     pub last_cancel_error: Option<String>,
 }
 
@@ -23,6 +25,8 @@ pub struct RuntimeStats {
     pub cancel_errors: usize,
     pub last_cancel_error: Option<String>,
     pub pending_cancels: usize,
+    pub outbox: usize,
+    pub buried: usize,
     pub per_host: Vec<(String, HostStats)>,
 }
 
@@ -47,6 +51,8 @@ impl Runtime {
                 rejected: core.rejected_count,
                 cancel_errors: core.cancel_errors,
                 pending_cancels: core.cancel_pending.len(),
+                outbox: core.outbox.size(),
+                buried: core.outbox.buried(),
                 last_cancel_error: core.last_cancel_error.clone(),
             };
             stats.active += detail.active;
@@ -56,6 +62,8 @@ impl Runtime {
             stats.rejected += detail.rejected;
             stats.cancel_errors += detail.cancel_errors;
             stats.pending_cancels += detail.pending_cancels;
+            stats.outbox += detail.outbox;
+            stats.buried += detail.buried;
             if detail.last_cancel_error.is_some() {
                 stats.last_cancel_error = detail.last_cancel_error.clone();
             }

@@ -55,14 +55,14 @@ fn next(seed: &mut u64) -> usize {
 fn main() -> Result<(), BoxError> {
     let mut seed = 7u64;
     let mut cancel_errors = 0usize;
-    for wave in 0..100 {
-        let ids: SharedIdGen = Rc::new(RefCell::new(Box::new(SeqIdGen::new(1)) as Box<dyn IdGen>));
-        let mut runtime = Runtime::new(Bus::new(), Rc::new(ManualClock::new(0)), ids.clone());
-        runtime.add(Service::mount("echo", 64, &["echo"], |_| Echo)?)?;
-        runtime.add(Service::mount("hold", 64, &["hold"], |_| Hold)?)?;
-        runtime.add(Service::mount("bad", 64, &["bad"], |_| Bad)?)?;
-        let caller = Caller::new(Inbox::new(256).receiver(), ids, 256);
-        runtime.add(caller.clone())?;
+    let ids: SharedIdGen = Rc::new(RefCell::new(Box::new(SeqIdGen::new(1)) as Box<dyn IdGen>));
+    let mut runtime = Runtime::new(Bus::new(), Rc::new(ManualClock::new(0)), ids.clone());
+    runtime.add(Service::mount("echo", 64, &["echo"], |_| Echo)?)?;
+    runtime.add(Service::mount("hold", 64, &["hold"], |_| Hold)?)?;
+    runtime.add(Service::mount("bad", 64, &["bad"], |_| Bad)?)?;
+    let caller = Caller::new(Inbox::new(256).receiver(), ids, 256);
+    runtime.add(caller.clone())?;
+    for wave in 0..1000 {
         let mut roots: Vec<(&str, Rc<Envelope>)> = Vec::new();
         for index in 0..20u64 {
             let topic = match next(&mut seed) {
@@ -91,28 +91,40 @@ fn main() -> Result<(), BoxError> {
             runtime.advance()?;
         }
         let stats = runtime.stats();
-        if stats.active != 0 || stats.held != 0 || stats.pending != 0 || stats.queued != 0 {
+        if stats.active != 0
+            || stats.held != 0
+            || stats.pending != 0
+            || stats.queued != 0
+            || stats.outbox != 0
+            || stats.buried != 0
+        {
             return Err(format!(
-                "soak leak wave {wave}: active={} held={} pending={} queued={}",
-                stats.active, stats.held, stats.pending, stats.queued
+                "soak leak wave {wave}: active={} held={} pending={} queued={} outbox={} buried={}",
+                stats.active, stats.held, stats.pending, stats.queued, stats.outbox, stats.buried
             )
             .into());
         }
         for (actor, detail) in &stats.per_host {
-            if detail.active != 0 || detail.held != 0 || detail.pending != 0 || detail.queued != 0 {
+            if detail.active != 0
+                || detail.held != 0
+                || detail.pending != 0
+                || detail.queued != 0
+                || detail.outbox != 0
+                || detail.buried != 0
+            {
                 return Err(format!(
-                    "soak host {actor} leak wave {wave}: active={} held={} pending={} queued={}",
-                    detail.active, detail.held, detail.pending, detail.queued
+                    "soak host {actor} leak wave {wave}: active={} held={} pending={} queued={} outbox={} buried={}",
+                    detail.active, detail.held, detail.pending, detail.queued, detail.outbox, detail.buried
                 )
                 .into());
             }
         }
-        cancel_errors += stats.cancel_errors;
-        runtime.close(None)?;
+        cancel_errors = stats.cancel_errors;
     }
+    runtime.close(None)?;
     if cancel_errors == 0 {
         return Err("soak did not exercise cancel_errors".into());
     }
-    println!("soak ok: 100 waves x 20 asks, {cancel_errors} contained hook errors");
+    println!("soak ok: 1000 waves x 20 asks, {cancel_errors} contained hook errors");
     Ok(())
 }

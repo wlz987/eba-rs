@@ -38,6 +38,18 @@ impl Outbox {
         self.count
     }
 
+    pub fn buried(&self) -> usize {
+        self.buried.len()
+    }
+
+    fn remember_buried(&mut self, envelope: Rc<Envelope>) {
+        self.buried.push(envelope);
+        while self.buried.len() > self.limit {
+            self.buried.remove(0);
+            self.count -= 1;
+        }
+    }
+
     pub fn inspect(&self) -> OutboxLedger {
         OutboxLedger {
             count: self.count,
@@ -106,7 +118,7 @@ impl Outbox {
                 Some(group) => group,
                 None => {
                     if !self.contains(envelope) {
-                        self.buried.push(Rc::clone(envelope));
+                        self.remember_buried(Rc::clone(envelope));
                         self.count += 1;
                     }
                     return;
@@ -118,7 +130,7 @@ impl Outbox {
                 .is_none_or(|head| head.header.id != envelope.header.id)
             {
                 if !self.contains(envelope) {
-                    self.buried.push(Rc::clone(envelope));
+                    self.remember_buried(Rc::clone(envelope));
                     self.count += 1;
                 }
                 return;
@@ -138,7 +150,7 @@ impl Outbox {
             None => None,
         };
         let Some(moved) = moved else { return };
-        self.buried.push(moved);
+        self.remember_buried(moved);
         if self.groups.contains_key(&topic) {
             self.add_candidate(&topic);
             self.signal.notify(DELIVERY);
