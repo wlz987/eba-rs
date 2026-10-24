@@ -110,9 +110,9 @@ impl Runtime {
             panic!("reentrant clock observation");
         }
         self.reading_clock = true;
-        let now = nonnegative_int(self.clock.now_ms(), "clock_ms");
-        self.reading_clock = false;
-        now
+        let _reading = ClockRead(&mut self.reading_clock);
+        let clock = &self.clock;
+        nonnegative_int(clock.now_ms(), "clock_ms")
     }
 
     fn enter(&mut self) -> Result<(), BoxError> {
@@ -147,4 +147,25 @@ fn sync_state(agenda: &Agenda, core: &Core) {
         closing || (!retired && has_work(core)),
         !closing && !retired && scheduled(core),
     );
+}
+
+/// Lowers the read flag even when the clock panics; a stuck flag would wedge the runtime.
+struct ClockRead<'a>(&'a mut bool);
+
+impl Drop for ClockRead<'_> {
+    fn drop(&mut self) {
+        *self.0 = false;
+    }
+}
+
+/// One turn: any panic still lowers the single-writer flag, then keeps unwinding.
+fn run_turn<T>(runtime: &mut Runtime, body: impl FnOnce(&mut Runtime) -> T) -> T {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(runtime)));
+    runtime.observed = None;
+    runtime.busy = false;
+    runtime.reading_clock = false;
+    match outcome {
+        Ok(value) => value,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
 }

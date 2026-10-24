@@ -12,14 +12,12 @@ use crate::job::pump::attach;
 use crate::notify::signal::AgendaHost;
 use crate::time::clock::Clock;
 
-use super::{sync_state, Runtime, RuntimeState};
+use super::{run_turn, sync_state, Runtime, RuntimeState};
 
 impl Runtime {
     pub fn add(&mut self, host: Rc<dyn JobHost>) -> Result<(), BoxError> {
         self.enter()?;
-        let started = self.add_inner(host);
-        self.busy = false;
-        started
+        run_turn(self, |runtime| runtime.add_inner(host))
     }
 
     fn add_inner(&mut self, host: Rc<dyn JobHost>) -> Result<(), BoxError> {

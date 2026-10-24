@@ -7,7 +7,7 @@ use crate::job::close::close_host;
 use crate::job::core::HostState;
 use crate::job::host::JobHost;
 
-use super::{core_of, Runtime, RuntimeState};
+use super::{core_of, run_turn, Runtime, RuntimeState};
 
 impl Runtime {
     pub fn shutdown(&mut self, actor_id: Option<&str>) -> Result<(), BoxError> {
@@ -46,8 +46,7 @@ impl Runtime {
             return Ok(Vec::new());
         }
         self.enter()?;
-        let outcome = self.close_inner(actor_id);
-        self.busy = false;
+        let outcome = run_turn(self, |runtime| runtime.close_inner(actor_id));
         self.agenda.wake_fn();
         outcome
     }

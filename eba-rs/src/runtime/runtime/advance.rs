@@ -4,15 +4,12 @@ use crate::job::pump::{advance_host, arm_closed_waits};
 use crate::mail::inbox::close_count;
 use crate::time::clock::pin_clock;
 
-use super::{core_of, Runtime};
+use super::{core_of, run_turn, Runtime};
 
 impl Runtime {
     pub fn advance(&mut self) -> Result<bool, BoxError> {
         self.enter()?;
-        let outcome = self.advance_inner();
-        self.observed = None;
-        self.busy = false;
-        outcome
+        run_turn(self, |runtime| runtime.advance_inner())
     }
 
     fn advance_inner(&mut self) -> Result<bool, BoxError> {
