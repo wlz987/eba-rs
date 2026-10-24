@@ -24,6 +24,13 @@ pub fn seal(core: &mut Core, job: &Job) -> Result<(), BoxError> {
 }
 
 pub(crate) fn drop_job(core: &mut Core, job: &Job) {
+    {
+        let mut state = job.state.borrow_mut();
+        if let Some(slot) = state.reply_slot.take() {
+            slot.close();
+        }
+        state.held = false;
+    }
     let request_id = job.root().header.id.clone();
     let held = core.jobs.get(&request_id).cloned();
     if held.is_some_and(|held| same_job(&held, job)) {

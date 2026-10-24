@@ -5,6 +5,7 @@ use crate::envelope::idgen::IdGen;
 use crate::envelope::result::{Completion, ResultBody};
 use crate::envelope::Envelope;
 use crate::errors::BoxError;
+use crate::job::reply::Reply;
 
 pub use crate::job::context::{seal_context, Commit, Context};
 
@@ -60,6 +61,8 @@ pub struct State {
     pub lifecycle: Lifecycle,
     pub notice: Notice,
     pub replied: bool,
+    pub held: bool,
+    pub reply_slot: Option<Reply>,
     pub reply_body: Option<ResultBody>,
     pub pending_control: Option<Control>,
 }
@@ -96,6 +99,8 @@ impl Job {
                 lifecycle: Lifecycle::New,
                 notice: Notice::Open,
                 replied: false,
+                held: false,
+                reply_slot: None,
                 reply_body: None,
                 pending_control: None,
             })),

@@ -10,6 +10,7 @@ use crate::envelope::Envelope;
 use crate::errors::{combine_failures, BoxError, LeasePending};
 use crate::job::core::{Core, HostState};
 use crate::job::delivery::release_attempts;
+use crate::job::held::close_held;
 use crate::job::job::Notice;
 use crate::job::pump::{enter, idle, recompute_pause, SIGNAL_MASK};
 use crate::mail::bus::Bus;
@@ -57,6 +58,7 @@ pub fn close_host(core: &mut Core, bus: &Bus) -> Result<Vec<Rc<Envelope>>, BoxEr
 }
 
 fn close_pass(core: &mut Core, bus: &Bus) -> Result<(), BoxError> {
+    close_held(core);
     let (hook_error, lease_error) = finish_jobs(core);
     settle_inbound(core, core.queue.size() + held_count(&core.sub.inbox))?;
     recompute_pause(core);

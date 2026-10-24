@@ -2,6 +2,7 @@ use crate::prelude::*;
 
 use crate::errors::{BoxError, WakeError};
 use crate::job::core::HostState;
+use crate::job::held::resolve_held;
 use crate::job::pump::{advance_host, arm_closed_waits};
 use crate::mail::inbox::close_count;
 use crate::time::clock::pin_clock;
@@ -52,6 +53,29 @@ impl Runtime {
             } else {
                 Ok(false)
             };
+            match outcome {
+                Ok(was) => {
+                    self.sync_core(&core);
+                    progressed = progressed || was;
+                }
+                Err(error) => {
+                    let answer = self.answer_spent(&error, &pinned);
+                    self.sync_core(&core);
+                    answer?;
+                    return Err(error);
+                }
+            }
+        }
+        for host in self.hosts.values().cloned().collect::<Vec<_>>() {
+            let core = core_of(&*host);
+            let running = {
+                let held = core.borrow();
+                held.state == HostState::Running || held.state == HostState::Draining
+            };
+            if !running {
+                continue;
+            }
+            let outcome = resolve_held(&mut core.borrow_mut(), self.bus_ref(), &self.id_gen);
             match outcome {
                 Ok(was) => {
                     self.sync_core(&core);

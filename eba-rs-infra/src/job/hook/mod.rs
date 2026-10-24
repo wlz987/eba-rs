@@ -45,9 +45,13 @@ where
     let mut control: Option<Control> = None;
     let hook = callback(&ctx);
     let commit = seal_context(&ctx);
+    let hold = commit.hold;
     let outcome = match hook {
         Ok(()) => (|| -> Result<(), BoxError> {
             let (sent_reply, sent_control) = commit_to(core, bus, clock, id_gen, job, commit)?;
+            if hold {
+                return Ok(());
+            }
             reply = sent_reply;
             control = sent_control;
             if let Some(held) = control.take() {

@@ -18,6 +18,7 @@
 - `Clock` 不会失败，没有 `ClockError`；非法生命周期转移、同一只 `Wake` 挂第二个等待者等
   违约行为 panic。
 - 错误结果可带域自定义整数 `code`（`err_payload_code` / `result_code`）。
+- 服务端可在 `ctx.hold()` 扣住一个 request，稍后用 `Reply::send/fail` 写槽；`advance` 末尾结算。
 - 按 ADR-0010，仓内没有测试；回归靠静态闸与例子。
 
 ## 例子

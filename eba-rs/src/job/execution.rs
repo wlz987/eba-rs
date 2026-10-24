@@ -75,7 +75,11 @@ pub fn silence(
     let own_reply = reply_topic(&core.sub.inbox);
     let self_addressed = root.header.address.reply_to() == Some(own_reply.as_str());
     let held = core.book.holds(&root.header.id);
-    if state.replied || root.header.address.kind() != "request" || (self_addressed && !held) {
+    if state.held
+        || state.replied
+        || root.header.address.kind() != "request"
+        || (self_addressed && !held)
+    {
         return Ok((None, control));
     }
     drop(state);
@@ -92,6 +96,9 @@ pub(crate) fn commit_to(
     job: &Job,
     commit: Commit,
 ) -> Result<(Option<Rc<Envelope>>, Option<Control>), BoxError> {
+    if commit.hold {
+        return Ok((None, None));
+    }
     let root = job.root();
     let state = Rc::clone(&job.state);
     let mut reply: Option<Rc<Envelope>> = None;

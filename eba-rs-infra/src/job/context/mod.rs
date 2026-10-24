@@ -6,6 +6,7 @@ use crate::envelope::result::{has_result_shape, ResultBody};
 use crate::envelope::{make_envelope, Envelope, EnvelopeId, MakeEnvelope};
 use crate::errors::{BackpressureError, BoxError, BusError};
 use crate::job::job::{Control, Intent, Lifecycle, SharedIdGen, State};
+use crate::job::reply::Reply;
 use crate::Payload;
 
 mod commit;
@@ -22,6 +23,7 @@ pub struct Buffer {
     pub requests: Vec<Intent>,
     pub reply: Option<ResultBody>,
     pub control: Option<Control>,
+    pub hold: Option<Reply>,
 }
 
 pub struct Context {
@@ -47,6 +49,7 @@ impl Context {
                 requests: Vec::new(),
                 reply: None,
                 control: None,
+                hold: None,
             }),
         }
     }
@@ -88,6 +91,37 @@ impl Context {
         self.mutate(|buffer| finish_control(buffer, body))
     }
 
+    pub fn hold(&self) -> Result<Reply, BoxError> {
+        self.edit(|buffer| {
+            if buffer.hold.is_some() {
+                return Err(Box::from(BusError("job already held".into())));
+            }
+            if buffer.control.is_some() || buffer.job.borrow().lifecycle != Lifecycle::Active {
+                return Err(Box::from(BusError("job already finished".into())));
+            }
+            let root = buffer.job.borrow().root.clone();
+            if root.header.address.kind() != "request" {
+                return Err(Box::from(BusError("root is not a request".into())));
+            }
+            if buffer.reply.is_some() || buffer.job.borrow().replied {
+                return Err(Box::from(BusError("root already replied".into())));
+            }
+            if !buffer.requests.is_empty() || buffer.pending_count > 0 {
+                return Err(Box::from(BusError(
+                    "cannot hold with pending requests".into(),
+                )));
+            }
+            let reply = Reply::new();
+            {
+                let mut state = buffer.job.borrow_mut();
+                state.held = true;
+                state.reply_slot = Some(reply.clone());
+            }
+            buffer.hold = Some(reply.clone());
+            Ok(reply)
+        })
+    }
+
     pub fn finished(&self) -> bool {
         let buffer = self.buffer.borrow();
         buffer.control.is_some() || buffer.job.borrow().lifecycle == Lifecycle::Finished
@@ -97,6 +131,13 @@ impl Context {
     where
         F: FnOnce(&mut Buffer) -> Result<(), BoxError>,
     {
+        self.edit(action)
+    }
+
+    fn edit<T>(
+        &self,
+        action: impl FnOnce(&mut Buffer) -> Result<T, BoxError>,
+    ) -> Result<T, BoxError> {
         let mut buffer = self.buffer.borrow_mut();
         if buffer.id_gen.is_none() {
             return Err(Box::from(BusError(
@@ -120,6 +161,9 @@ fn request_intent(
     payload: Payload,
     timeout: Option<u64>,
 ) -> Result<EnvelopeId, BoxError> {
+    if buffer.hold.is_some() {
+        return Err(Box::from(BusError("job already held".into())));
+    }
     {
         let job = buffer.job.borrow();
         if buffer.pending_count + buffer.requests.len() >= job.max_inflight {
@@ -155,6 +199,9 @@ fn request_intent(
 }
 
 fn put_reply(buffer: &mut Buffer, body: ResultBody) -> Result<(), BoxError> {
+    if buffer.hold.is_some() {
+        return Err(Box::from(BusError("job already held".into())));
+    }
     let root = buffer.job.borrow().root.clone();
     if root.header.address.kind() != "request" {
         return Err(Box::from(BusError("root is not a request".into())));
@@ -170,6 +217,9 @@ fn put_reply(buffer: &mut Buffer, body: ResultBody) -> Result<(), BoxError> {
 }
 
 fn finish_control(buffer: &mut Buffer, body: Option<ResultBody>) -> Result<(), BoxError> {
+    if buffer.hold.is_some() {
+        return Err(Box::from(BusError("job already held".into())));
+    }
     if buffer.control.is_some() {
         return Ok(());
     }

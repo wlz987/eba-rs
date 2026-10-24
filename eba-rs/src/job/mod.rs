@@ -9,12 +9,16 @@ pub mod core;
 pub mod delivery;
 pub mod ending;
 pub mod execution;
+pub(crate) mod held;
 pub mod hook;
 pub mod host;
 pub mod job;
 pub mod outbox;
 pub mod pump;
+mod reply;
 pub mod resume;
+
+pub use reply::Reply;
 
 pub use book::{Continuation, RequestBook};
 pub use caller::{settle, settled, Call, Caller};

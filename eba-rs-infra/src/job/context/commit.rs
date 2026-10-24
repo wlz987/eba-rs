@@ -9,6 +9,7 @@ pub struct Commit {
     pub requests: Vec<Intent>,
     pub reply: Option<ResultBody>,
     pub control: Option<Control>,
+    pub hold: bool,
 }
 
 pub fn seal_context(ctx: &Context) -> Commit {
@@ -18,5 +19,6 @@ pub fn seal_context(ctx: &Context) -> Commit {
         requests: buffer.requests.clone(),
         reply: buffer.reply.clone(),
         control: buffer.control.clone(),
+        hold: buffer.hold.is_some(),
     }
 }

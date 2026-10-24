@@ -21,6 +21,7 @@
   收件箱收不下是背压（`MailboxFull`），不是投递故障。
 - `close` 返回未认领的信；投递失败两次以 `delivery_failed` 结清等待；钩子不答补 `job_silent`。
 - 错误结果可带域自定义整数 `code`（`err_payload_code` / `result_code`）。
+- 服务端可在 `ctx.hold()` 扣住一个 request，稍后用 `Reply::send/fail` 写槽；`advance` 末尾结算。
 
 ## 例子
 
