@@ -17,6 +17,7 @@
   的 unwind，`busy` 只在正常返回时复位（读钟标志仍由 Drop 守卫复位）。
 - `Clock` 不会失败，没有 `ClockError`；非法生命周期转移、同一只 `Wake` 挂第二个等待者等
   违约行为 panic。
+- 错误结果可带域自定义整数 `code`（`err_payload_code` / `result_code`）。
 - 按 ADR-0010，仓内没有测试；回归靠静态闸与例子。
 
 ## 例子

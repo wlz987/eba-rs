@@ -13,6 +13,7 @@ pub enum ResultBody {
     Err {
         error: String,
         detail: HashMap<String, Payload>,
+        code: Option<i32>,
     },
 }
 
@@ -36,9 +37,25 @@ pub fn err_payload(
     error: impl Into<String>,
     detail: Option<HashMap<String, Payload>>,
 ) -> Result<ResultBody, EnvelopeBuildError> {
+    err_payload_or(error, detail, None)
+}
+
+pub fn err_payload_code(
+    error: impl Into<String>,
+    code: i32,
+    detail: Option<HashMap<String, Payload>>,
+) -> Result<ResultBody, EnvelopeBuildError> {
+    err_payload_or(error, detail, Some(code))
+}
+
+fn err_payload_or(
+    error: impl Into<String>,
+    detail: Option<HashMap<String, Payload>>,
+    code: Option<i32>,
+) -> Result<ResultBody, EnvelopeBuildError> {
     let extra = detail.unwrap_or_default();
     for key in extra.keys() {
-        if matches!(key.as_str(), "ok" | "error" | "value") {
+        if matches!(key.as_str(), "ok" | "error" | "value" | "code") {
             return Err(EnvelopeBuildError(format!(
                 "reserved result key: {:?}",
                 key
@@ -48,6 +65,7 @@ pub fn err_payload(
     Ok(ResultBody::Err {
         error: error.into(),
         detail: extra,
+        code,
     })
 }
 
@@ -73,6 +91,13 @@ pub fn result_value(body: &ResultBody) -> Option<&Payload> {
 pub fn result_error(body: &ResultBody) -> Option<&str> {
     match body {
         ResultBody::Err { error, .. } => Some(error),
+        ResultBody::Ok { .. } => None,
+    }
+}
+
+pub fn result_code(body: &ResultBody) -> Option<i32> {
+    match body {
+        ResultBody::Err { code, .. } => *code,
         ResultBody::Ok { .. } => None,
     }
 }
