@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use alloc::collections::BTreeMap;
+use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::rc::Rc;
 
 use crate::envelope::ids::ActorId;
@@ -45,6 +45,7 @@ pub struct Core {
     pub rejected_count: usize,
     pub cancel_errors: usize,
     pub last_cancel_error: Option<String>,
+    pub cancel_pending: BTreeSet<EnvelopeId>,
     pub abandoned: Option<Vec<Rc<Envelope>>>,
     pub pending: Option<Rc<Envelope>>,
     pub pending_job: Option<Job>,
@@ -133,6 +134,7 @@ impl Core {
             rejected_count: 0,
             cancel_errors: 0,
             last_cancel_error: None,
+            cancel_pending: BTreeSet::new(),
             abandoned: None,
             pending: None,
             pending_job: None,
@@ -153,11 +155,27 @@ impl Core {
         let body = crate::envelope::result::err_payload("cancelled", None)?;
         for request_id in request_ids {
             let job = self.jobs.get(request_id).cloned();
-            if let Some(job) = job {
-                crate::job::ending::cancel_job(self, &job, &body)?;
+            let Some(job) = job else {
+                self.cancel_pending.remove(request_id);
+                continue;
+            };
+            let active = {
+                let state = job.state.borrow();
+                state.lifecycle == crate::job::job::Lifecycle::Active && !state.held
+            };
+            if !active {
+                self.cancel_pending.remove(request_id);
+                continue;
+            }
+            if !crate::job::ending::cancel_job(self, &job, &body)? {
+                self.cancel_pending.insert(request_id.clone());
             }
         }
         Ok(())
+    }
+
+    pub fn take_pending_cancels(&mut self) -> BTreeSet<EnvelopeId> {
+        core::mem::take(&mut self.cancel_pending)
     }
 
     pub fn cancel_queued(&mut self, request_ids: &[EnvelopeId]) {

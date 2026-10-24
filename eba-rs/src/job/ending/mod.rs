@@ -34,15 +34,20 @@ pub(crate) fn cancel_job(
             return Ok(false);
         }
     }
+    if core.book.cancel(&job.root().header.id).is_err() {
+        return Ok(false);
+    }
     {
         let mut state = job.state.borrow_mut();
         set_lifecycle(&mut state, Lifecycle::Finished);
         state.notice = Notice::Finished;
     }
-    let hook = job.hooks.on_finished(Some(body));
-    let sealed = seal(core, job);
+    let hook = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        job.hooks.on_finished(Some(body))
+    }))
+    .unwrap_or_else(|_| Err("cleanup panic".into()));
     drop_job(core, job);
-    for error in [hook.err(), sealed.err()].into_iter().flatten() {
+    if let Err(error) = hook {
         core.cancel_errors += 1;
         core.last_cancel_error = Some(error.as_ref().to_string());
     }

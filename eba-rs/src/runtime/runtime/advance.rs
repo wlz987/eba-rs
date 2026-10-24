@@ -16,7 +16,10 @@ impl Runtime {
     fn drain_cancelled(&self) -> Result<Vec<crate::envelope::EnvelopeId>, BoxError> {
         let mut cancelled = Vec::new();
         for host in self.hosts.values() {
-            cancelled.extend(host.core().borrow_mut().take_cancelled());
+            let core = host.core();
+            let mut core = core.borrow_mut();
+            cancelled.extend(core.take_cancelled());
+            cancelled.extend(core.take_pending_cancels());
         }
         if !cancelled.is_empty() {
             for host in self.hosts.values() {

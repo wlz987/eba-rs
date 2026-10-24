@@ -6,7 +6,7 @@ use eba_rs::envelope::idgen::{IdGen, SeqIdGen};
 use eba_rs::envelope::ids::actor_id;
 use eba_rs::envelope::result::ResultBody;
 use eba_rs::errors::BoxError;
-use eba_rs::job::call::settled;
+use eba_rs::job::call::{settled, Call};
 use eba_rs::job::caller::{CallOptions, Caller};
 use eba_rs::job::job::{Context, JobHooks, SharedIdGen};
 use eba_rs::job::Service;
@@ -62,7 +62,7 @@ impl JobHooks for Bad {
     }
 
     fn on_finished(&self, _body: Option<&ResultBody>) -> Result<(), BoxError> {
-        Err("cleanup boom".into())
+        panic!("cleanup boom")
     }
 }
 
@@ -175,20 +175,45 @@ fn main() -> Result<(), BoxError> {
     for _ in 0..8 {
         runtime.advance()?;
     }
+    let bad_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
     let bad_cancelled = caller.cancel(&bad_root.header.id)?;
     for _ in 0..8 {
         runtime.advance()?;
     }
+    std::panic::set_hook(bad_hook);
     let stats = runtime.stats();
     if !bad_cancelled
         || stats.cancel_errors != 1
-        || stats.last_cancel_error.as_deref() != Some("cleanup boom")
+        || stats.last_cancel_error.as_deref() != Some("cleanup panic")
     {
         return Err(format!(
             "orphan bad hook cancelled={bad_cancelled} errors={} last={:?} active={}",
             stats.cancel_errors, stats.last_cancel_error, stats.active
         )
         .into());
+    }
+    let pay_root = caller.admit(CallOptions {
+        topic: "orphan.work".into(),
+        payload: Arc::new(5u64) as Payload,
+        from: actor_id("orphan"),
+        timeout_ms: None,
+    })?;
+    for _ in 0..4 {
+        runtime.advance()?;
+    }
+    if let Some(call) = pay_root.payload.downcast_ref::<Call>() {
+        call.set_pay(Box::new(|_| panic!("pay boom")));
+    }
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let pay_cancelled = caller.cancel(&pay_root.header.id)?;
+    for _ in 0..4 {
+        runtime.advance()?;
+    }
+    std::panic::set_hook(previous_hook);
+    if !pay_cancelled || runtime.stats().active != 0 {
+        return Err("orphan pay panic leaked".into());
     }
     println!("orphan ok");
     Ok(())

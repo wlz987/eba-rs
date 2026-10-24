@@ -53,7 +53,9 @@ impl Call {
         }
         let pay = self.pay.write().unwrap().take();
         if let Some(pay) = pay {
-            pay(Outcome::Settled(completion));
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                pay(Outcome::Settled(completion));
+            }));
         }
     }
 }

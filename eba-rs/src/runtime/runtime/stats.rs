@@ -10,6 +10,7 @@ pub struct RuntimeStats {
     pub rejected: usize,
     pub cancel_errors: usize,
     pub last_cancel_error: Option<String>,
+    pub pending_cancels: usize,
 }
 
 impl Runtime {
@@ -31,6 +32,7 @@ impl Runtime {
             stats.pending += core.book.size();
             stats.rejected += core.rejected_count;
             stats.cancel_errors += core.cancel_errors;
+            stats.pending_cancels += core.cancel_pending.len();
             if core.last_cancel_error.is_some() {
                 stats.last_cancel_error = core.last_cancel_error.clone();
             }
