@@ -34,7 +34,15 @@ pub struct CallOptions {
 
 impl Caller {
     pub fn new(receiver: Receiver, id_gen: SharedIdGen, active_limit: usize) -> Rc<Caller> {
-        let actor_id = actor_id("caller");
+        Self::with_actor(receiver, id_gen, active_limit, actor_id("caller"))
+    }
+
+    pub fn with_actor(
+        receiver: Receiver,
+        id_gen: SharedIdGen,
+        active_limit: usize,
+        actor_id: crate::envelope::ids::ActorId,
+    ) -> Rc<Caller> {
         Rc::new_cyclic(|weak| {
             let make_job: MakeJob = {
                 let weak = weak.clone();

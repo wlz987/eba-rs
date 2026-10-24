@@ -3,6 +3,7 @@ use crate::prelude::*;
 use alloc::rc::Rc;
 
 use crate::errors::{BoxError, BusError};
+use crate::job::caller::Caller;
 use crate::job::core::{Core, HostState};
 use crate::job::host::{core_of, JobHost};
 use crate::job::job::SharedIdGen;
@@ -25,6 +26,7 @@ pub enum RuntimeState {
 mod add;
 mod advance;
 mod close;
+mod front;
 
 pub struct Runtime {
     hosts: IndexedMap<String, Rc<dyn JobHost>>,
@@ -37,6 +39,7 @@ pub struct Runtime {
     bus: Bus,
     clock: Rc<dyn Clock>,
     id_gen: SharedIdGen,
+    front_caller: Option<Rc<Caller>>,
 }
 
 impl Runtime {
@@ -52,6 +55,7 @@ impl Runtime {
             bus,
             clock,
             id_gen,
+            front_caller: None,
         }
     }
 
