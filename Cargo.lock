@@ -16,7 +16,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "eba-rs"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "tokio",
  "uuid",
@@ -24,7 +24,7 @@ dependencies = [
 
 [[package]]
 name = "eba-rs-infra"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "spin",
  "uuid",

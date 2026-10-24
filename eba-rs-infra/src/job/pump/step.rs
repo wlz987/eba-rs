@@ -106,18 +106,14 @@ pub(super) fn pump(
         let now = clock.now_ms();
         let advanced = step(core, bus, clock, id_gen, phase);
         refresh(core, now);
-        match advanced {
-            Ok(found) => {
-                if found == Step::Idle {
-                    idle += 1;
-                    continue;
-                }
-                budget -= 1;
-                progressed = progressed || found == Step::Advanced;
-                idle = 0;
-            }
-            Err(error) => return Err(error),
+        let found = advanced?;
+        if found == Step::Idle {
+            idle += 1;
+            continue;
         }
+        budget -= 1;
+        progressed = progressed || found == Step::Advanced;
+        idle = 0;
     }
     Ok(progressed)
 }

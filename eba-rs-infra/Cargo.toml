@@ -1,6 +1,6 @@
 [package]
 name = "eba-rs-infra"
-version = "0.6.3"
+version = "0.6.4"
 edition = "2021"
 description = "EBA 的 no_std/alloc 端口（无 Drive）"
 keywords = ["runtime", "actor", "message", "no-std"]

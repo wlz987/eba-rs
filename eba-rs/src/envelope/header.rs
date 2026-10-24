@@ -61,10 +61,8 @@ impl Header {
             Address::Request { reply_to } => {
                 split_topic(reply_to)?;
             }
-            Address::Result { correlation_id } => {
-                if correlation_id.0.is_empty() {
-                    return Err(EnvelopeBuildError("correlation_id must be nonempty".into()));
-                }
+            Address::Result { correlation_id } if correlation_id.0.is_empty() => {
+                return Err(EnvelopeBuildError("correlation_id must be nonempty".into()));
             }
             _ => {}
         }
