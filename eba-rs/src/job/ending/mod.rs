@@ -23,6 +23,32 @@ pub fn seal(core: &mut Core, job: &Job) -> Result<(), BoxError> {
     core.book.cancel(&root_id)
 }
 
+pub(crate) fn cancel_job(
+    core: &mut Core,
+    job: &Job,
+    body: &crate::envelope::result::ResultBody,
+) -> Result<bool, BoxError> {
+    {
+        let state = job.state.borrow();
+        if state.lifecycle != Lifecycle::Active || state.held {
+            return Ok(false);
+        }
+    }
+    {
+        let mut state = job.state.borrow_mut();
+        set_lifecycle(&mut state, Lifecycle::Finished);
+        state.notice = Notice::Finished;
+    }
+    let hook = job.hooks.on_finished(Some(body));
+    let sealed = seal(core, job);
+    drop_job(core, job);
+    for error in [hook.err(), sealed.err()].into_iter().flatten() {
+        core.cancel_errors += 1;
+        core.last_cancel_error = Some(error.as_ref().to_string());
+    }
+    Ok(true)
+}
+
 pub(crate) fn drop_job(core: &mut Core, job: &Job) {
     {
         let mut state = job.state.borrow_mut();

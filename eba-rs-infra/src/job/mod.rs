@@ -17,6 +17,7 @@ pub mod outbox;
 pub mod pump;
 mod reply;
 pub mod resume;
+mod service;
 
 pub use reply::Reply;
 
@@ -26,3 +27,4 @@ pub use core::{Core, CoreOptions, HostState};
 pub use host::{core_of, JobHost};
 pub use job::{Context, Job, JobHooks, Lifecycle, SharedIdGen};
 pub use outbox::Outbox;
+pub use service::Service;

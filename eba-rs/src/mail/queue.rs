@@ -34,6 +34,12 @@ impl<T> Queue<T> {
         true
     }
 
+    pub fn remove<F: FnMut(&T) -> bool>(&mut self, mut predicate: F) -> usize {
+        let before = self.items.len();
+        self.items.retain(|item| !predicate(item));
+        before - self.items.len()
+    }
+
     pub fn shift(&mut self) -> Option<T> {
         self.items.pop_front()
     }

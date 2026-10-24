@@ -16,9 +16,12 @@ pub mod errors;
 pub mod job;
 pub mod mail;
 pub mod notify;
+pub mod park;
 pub mod pattern;
 pub mod rendezvous;
 pub mod runtime;
 pub mod time;
 
-pub type Payload = alloc::sync::Arc<dyn core::any::Any + Send + Sync>;
+pub use park::Park;
+
+pub type Payload = alloc::sync::Arc<dyn core::any::Any>;

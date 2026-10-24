@@ -1,3 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["eba-rs", "eba-rs-infra"]
+
+[workspace.lints.clippy]
+# 运行时单线程；Arc 只用于廉价克隆，不跨线程。
+arc_with_non_send_sync = "allow"

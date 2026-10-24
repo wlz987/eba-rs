@@ -15,6 +15,7 @@ pub struct Continuation {
 pub struct RequestBook {
     records: Records<Continuation>,
     owners: HashMap<EnvelopeId, HashSet<EnvelopeId>>,
+    cancelled: Vec<EnvelopeId>,
 }
 
 impl RequestBook {
@@ -22,6 +23,7 @@ impl RequestBook {
         RequestBook {
             records: Records::new(),
             owners: HashMap::new(),
+            cancelled: Vec::new(),
         }
     }
 
@@ -98,8 +100,13 @@ impl RequestBook {
         for request_id in owned {
             self.records.finish(&request_id, false)?;
             self.forget(owner, &request_id);
+            self.cancelled.push(request_id);
         }
         Ok(())
+    }
+
+    pub fn take_cancelled(&mut self) -> Vec<EnvelopeId> {
+        std::mem::take(&mut self.cancelled)
     }
 
     fn claim(&mut self, claim: Option<Claim<Continuation>>) -> Option<Claim<Continuation>> {

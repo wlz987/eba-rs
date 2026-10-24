@@ -3,4 +3,4 @@
 mod pending;
 pub mod runtime;
 pub use pending::Pending;
-pub use runtime::{Runtime, RuntimeState};
+pub use runtime::{Runtime, RuntimeState, RuntimeStats};

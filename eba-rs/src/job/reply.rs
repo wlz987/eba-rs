@@ -41,6 +41,10 @@ impl Reply {
         self.send(body)
     }
 
+    pub fn is_closed(&self) -> bool {
+        self.slot.borrow().closed
+    }
+
     pub(crate) fn take(&self) -> Option<ResultBody> {
         self.slot.borrow().body.clone()
     }

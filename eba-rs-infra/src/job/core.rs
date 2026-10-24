@@ -8,6 +8,7 @@ use crate::errors::{BoxError, BusError};
 use crate::job::book::RequestBook;
 use crate::job::job::Job;
 use crate::job::outbox::Outbox;
+use crate::mail::inbox::remove;
 use crate::mail::inbox::Receiver;
 use crate::mail::queue::Queue;
 use crate::mail::subscriber::Subscriber;
@@ -42,6 +43,8 @@ pub struct Core {
     pub busy: bool,
     pub state: HostState,
     pub rejected_count: usize,
+    pub cancel_errors: usize,
+    pub last_cancel_error: Option<String>,
     pub abandoned: Option<Vec<Rc<Envelope>>>,
     pub pending: Option<Rc<Envelope>>,
     pub pending_job: Option<Job>,
@@ -128,12 +131,59 @@ impl Core {
             busy: false,
             state: HostState::Running,
             rejected_count: 0,
+            cancel_errors: 0,
+            last_cancel_error: None,
             abandoned: None,
             pending: None,
             pending_job: None,
             rest: Vec::new(),
             again: alloc::collections::BTreeSet::new(),
             attempts: alloc::collections::BTreeMap::new(),
+        }
+    }
+
+    pub fn take_cancelled(&mut self) -> Vec<EnvelopeId> {
+        self.book.take_cancelled()
+    }
+
+    pub fn cancel_jobs(&mut self, request_ids: &[EnvelopeId]) -> Result<(), BoxError> {
+        if request_ids.is_empty() {
+            return Ok(());
+        }
+        let body = crate::envelope::result::err_payload("cancelled", None)?;
+        for request_id in request_ids {
+            let job = self.jobs.get(request_id).cloned();
+            if let Some(job) = job {
+                crate::job::ending::cancel_job(self, &job, &body)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn cancel_queued(&mut self, request_ids: &[EnvelopeId]) {
+        if request_ids.is_empty() {
+            return;
+        }
+        self.queue
+            .remove(|envelope| request_ids.contains(&envelope.header.id));
+        for request_id in request_ids {
+            remove(&self.sub.inbox, request_id);
+        }
+    }
+
+    pub fn cancel_held(&mut self, request_ids: &[EnvelopeId]) {
+        for job in self.jobs.values() {
+            let root_id = job.root().header.id.clone();
+            if !request_ids.contains(&root_id) {
+                continue;
+            }
+            let state = job.state.borrow();
+            if !state.held {
+                continue;
+            }
+            if let Some(slot) = &state.reply_slot {
+                let _ = slot.fail("cancelled", None);
+            }
         }
     }
 

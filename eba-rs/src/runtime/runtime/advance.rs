@@ -13,6 +13,23 @@ impl Runtime {
         run_turn(self, |runtime| runtime.advance_inner())
     }
 
+    fn drain_cancelled(&self) -> Result<Vec<crate::envelope::EnvelopeId>, BoxError> {
+        let mut cancelled = Vec::new();
+        for host in self.hosts.values() {
+            cancelled.extend(host.core().borrow_mut().take_cancelled());
+        }
+        if !cancelled.is_empty() {
+            for host in self.hosts.values() {
+                let core = host.core();
+                let mut core = core.borrow_mut();
+                core.cancel_queued(&cancelled);
+                core.cancel_held(&cancelled);
+                core.cancel_jobs(&cancelled)?;
+            }
+        }
+        Ok(cancelled)
+    }
+
     fn advance_inner(&mut self) -> Result<bool, BoxError> {
         let now = self.schedule_now();
         self.observed = Some(now);
@@ -30,6 +47,12 @@ impl Runtime {
         }
         let pinned = pin_clock(now);
         self.agenda.due(now);
+        if !self.drain_cancelled()?.is_empty() {
+            for host in self.hosts.values() {
+                let core = host.core();
+                self.sync_core(&core);
+            }
+        }
         let count = self.agenda.ready_size();
         let mut progressed = false;
         for _ in 0..count {
@@ -64,6 +87,7 @@ impl Runtime {
                 }
             }
         }
+        self.drain_cancelled()?;
         for host in self.hosts.values().cloned().collect::<Vec<_>>() {
             let core = core_of(&*host);
             let running = {

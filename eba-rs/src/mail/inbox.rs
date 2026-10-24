@@ -12,7 +12,8 @@ pub use self::core::{close_count, Inbox};
 pub use self::ops::InboxLedger;
 pub use self::ops::{
     can_enqueue, close_in_place, enqueue, find, held_count, holds_kind, inspect, mark_read,
-    pause_work, pull_kind, read_signal, remaining, reply_topic, take_seized, watch_space,
+    pause_work, pull_kind, read_signal, remaining, remove, replace_topic, reply_topic, take_seized,
+    watch_space,
 };
 pub use self::receiver::{Receiver, ReceiverBorrow};
 pub use self::route::RouteRevoke;

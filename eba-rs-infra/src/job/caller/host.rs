@@ -1,16 +1,16 @@
 use crate::prelude::*;
 use alloc::rc::Rc;
-use alloc::sync::Arc;
 use core::cell::RefCell;
 
-use crate::envelope::result::err_payload;
-use crate::envelope::{make_envelope, Envelope, EnvelopeId, MakeEnvelope};
-use crate::errors::{BoxError, BusError, MailboxFull};
+use crate::envelope::result::{err_payload, Completion};
+use crate::envelope::{Envelope, EnvelopeId};
+use crate::errors::BoxError;
 use crate::job::call::{Call, Wait};
 use crate::job::core::Core;
+use crate::job::ending::drop_job;
 use crate::job::host::JobHost;
 use crate::job::job::Job;
-use crate::mail::inbox::{enqueue, mark_read, reply_topic};
+use crate::mail::inbox::mark_read;
 
 use super::{settle, Caller};
 
@@ -30,7 +30,7 @@ impl JobHost for Caller {
     }
 }
 
-pub(super) fn end(caller: &Caller, core: &mut Core, job: &Job) -> Result<bool, BoxError> {
+pub(super) fn end(_caller: &Caller, core: &mut Core, job: &Job) -> Result<bool, BoxError> {
     let root = job.root();
     let Some(call) = root.payload.downcast_ref::<Call>() else {
         return Ok(false);
@@ -39,32 +39,14 @@ pub(super) fn end(caller: &Caller, core: &mut Core, job: &Job) -> Result<bool, B
     let Some(request_id) = request_id else {
         return Ok(false);
     };
-    let inbox = core.sub.inbox.clone();
-    if inbox.is_closed() {
-        return Err(Box::from(BusError("inbox closed".into())));
-    }
-    if inbox.remaining() < 1 {
-        mark_read(&inbox);
-        return Err(Box::from(MailboxFull("target inbox full".into())));
-    }
-    let id = caller.id_gen.borrow_mut().next_envelope_id();
-    let reply = make_envelope(MakeEnvelope {
-        topic: reply_topic(&inbox),
-        payload: Arc::new(err_payload("cancelled", None).unwrap()),
-        from: core.sub.actor_id.clone(),
-        cause: Some(job.root().header.cause.clone()),
-        id: Some(id),
-        kind: "result".into(),
-        reply_to: None,
-        correlation_id: Some(request_id),
-    })
-    .map_err(|error| Box::new(error) as BoxError)?;
-    let rc = Rc::new(reply);
-    if !enqueue(&inbox, rc) {
-        mark_read(&inbox);
-        return Err(Box::from(MailboxFull("target inbox full".into())));
-    }
-    mark_read(&inbox);
+    let body = err_payload("cancelled", None)?;
+    core.book.cancel(&root.header.id)?;
+    drop_job(core, job);
+    mark_read(&core.sub.inbox);
+    call.complete(Completion {
+        request_id,
+        body: Some(body),
+    });
     Ok(true)
 }
 

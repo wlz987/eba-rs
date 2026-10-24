@@ -24,7 +24,7 @@ pub enum Outcome {
     Failed(String),
 }
 
-pub type Pay = Box<dyn FnOnce(Outcome) + Send + Sync>;
+pub type Pay = Box<dyn FnOnce(Outcome)>;
 
 impl Call {
     pub fn new(topic: String, payload: Payload, timeout_ms: Option<u64>) -> Self {

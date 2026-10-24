@@ -18,6 +18,36 @@ pub fn enqueue(inbox: &Rc<Inbox>, envelope: Rc<Envelope>) -> bool {
     true
 }
 
+pub fn replace_topic(inbox: &Rc<Inbox>, envelope: Rc<Envelope>) -> bool {
+    let topic = envelope.header.topic.clone();
+    let kind = envelope.header.address.kind();
+    let mut wakers = Wakers::none();
+    {
+        let mut state = inbox.state.borrow_mut();
+        if state.closed || (state.work_paused && (kind == "event" || kind == "request")) {
+            return false;
+        }
+        let kept: VecDeque<Rc<Envelope>> = state
+            .items
+            .iter()
+            .filter(|item| item.header.topic != topic)
+            .cloned()
+            .collect();
+        if kept.len() >= inbox.capacity {
+            return false;
+        }
+        let removed = state.items.len() - kept.len();
+        state.items = kept;
+        state.items.push_back(envelope);
+        if removed > 0 {
+            wakers = Wakers::of(&state);
+            wakers.freed = true;
+        }
+    }
+    wakers.run();
+    true
+}
+
 pub fn can_enqueue(inbox: &Rc<Inbox>, kind: &str) -> bool {
     let state = inbox.state.borrow();
     !state.closed
@@ -78,6 +108,29 @@ pub fn pull_kind(inbox: &Rc<Inbox>, kind: &str) -> Option<Rc<Envelope>> {
             wakers = Wakers::of(&state);
             wakers.cleared = state.items.is_empty();
             wakers.freed = full;
+            break;
+        }
+        found
+    };
+    wakers.run();
+    found
+}
+
+pub fn remove(inbox: &Rc<Inbox>, envelope_id: &EnvelopeId) -> bool {
+    let mut wakers = Wakers::none();
+    let found = {
+        let mut state = inbox.state.borrow_mut();
+        let full = state.items.len() == inbox.capacity;
+        let mut found = false;
+        for index in 0..state.items.len() {
+            if state.items[index].header.id != *envelope_id {
+                continue;
+            }
+            state.items.remove(index);
+            wakers = Wakers::of(&state);
+            wakers.cleared = state.items.is_empty();
+            wakers.freed = full;
+            found = true;
             break;
         }
         found

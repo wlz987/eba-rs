@@ -26,6 +26,10 @@ mod add;
 mod advance;
 mod close;
 mod front;
+mod stats;
+
+/// Single writer for the bus it owns; Rust ownership enforces one runtime per bus.
+pub use self::stats::RuntimeStats;
 
 pub struct Runtime {
     hosts: IndexedMap<String, Rc<dyn JobHost>>,

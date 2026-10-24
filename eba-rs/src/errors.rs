@@ -9,7 +9,7 @@ pub use self::delivery::{
 pub use self::mail::{BackpressureError, BusError, EnvelopeBuildError, InvalidTopic, MailboxFull};
 
 #[derive(Debug)]
-pub struct MultipleFailures(pub Vec<Box<dyn std::error::Error + Send + Sync>>);
+pub struct MultipleFailures(pub Vec<Box<dyn std::error::Error>>);
 impl fmt::Display for MultipleFailures {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "multiple failures")
@@ -17,7 +17,7 @@ impl fmt::Display for MultipleFailures {
 }
 impl std::error::Error for MultipleFailures {}
 
-pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
+pub type BoxError = Box<dyn std::error::Error>;
 
 pub const OUTBOX_FULL: &str = "result outbox full";
 pub const REENTRANT: &str = "reentrant host execution";
@@ -61,7 +61,7 @@ pub fn is_settled(error: &BoxError) -> bool {
     error.downcast_ref::<Settled>().is_some()
 }
 
-pub fn bare<T: std::error::Error + Send + Sync + 'static>(error: &BoxError) -> Option<&T> {
+pub fn bare<T: std::error::Error + 'static>(error: &BoxError) -> Option<&T> {
     match error.downcast_ref::<Settled>() {
         Some(settled) => settled.0.downcast_ref::<T>(),
         None => error.downcast_ref::<T>(),

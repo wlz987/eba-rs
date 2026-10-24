@@ -9,7 +9,7 @@ use super::{BoxError, OUTBOX_FULL};
 pub struct DeliveryError {
     pub envelope: Arc<Envelope>,
     pub reason: String,
-    pub source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    pub source: Option<Box<dyn std::error::Error>>,
     pub outbox_full: bool,
 }
 
