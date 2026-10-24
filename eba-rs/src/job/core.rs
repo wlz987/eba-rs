@@ -218,3 +218,65 @@ impl Core {
         self.abandoned.as_mut().expect("begin_close keeps the list")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    use crate::envelope::ids::{actor_id, envelope_id};
+    use crate::envelope::{make_envelope, MakeEnvelope};
+    use crate::job::job::{set_lifecycle, Job, JobHooks, Lifecycle};
+    use crate::mail::inbox::Inbox;
+    use crate::Payload;
+
+    use super::{Core, CoreOptions};
+
+    struct Hooks;
+
+    impl JobHooks for Hooks {}
+
+    #[test]
+    fn cancel_retries_after_lease() {
+        let mut core = Core::new(CoreOptions {
+            actor_id: actor_id("test"),
+            receiver: Inbox::new(8).receiver(),
+            patterns: Vec::new(),
+            request_timeout_ms: None,
+            queue_limit: 8,
+            active_limit: 8,
+            work_budget: 8,
+            outbox_limit: 8,
+            make_job: Rc::new(|_root| Err("unused".into())),
+            on_rejected: Rc::new(|_, _| Ok(())),
+        });
+        let root = Rc::new(
+            make_envelope(MakeEnvelope {
+                topic: "t".into(),
+                payload: Arc::new(()) as Payload,
+                from: actor_id("test"),
+                cause: None,
+                id: Some(envelope_id("req-1")),
+                kind: "event".into(),
+                reply_to: None,
+                correlation_id: None,
+            })
+            .unwrap(),
+        );
+        let job = Job::new(root.clone(), Rc::new(Hooks));
+        set_lifecycle(&mut job.state.borrow_mut(), Lifecycle::Active);
+        let id = root.header.id.clone();
+        core.jobs.insert(id.clone(), job);
+
+        core.book.fail_next_cancel();
+        core.cancel_jobs(std::slice::from_ref(&id)).unwrap();
+        assert!(core.jobs.contains_key(&id));
+        let pending: Vec<_> = core.take_pending_cancels().into_iter().collect();
+        assert_eq!(pending, vec![id.clone()]);
+
+        core.cancel_jobs(&pending).unwrap();
+        assert!(core.jobs.is_empty());
+        assert!(core.cancel_pending.is_empty());
+        assert_eq!(core.cancel_errors, 0);
+    }
+}

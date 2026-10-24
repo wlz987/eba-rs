@@ -16,6 +16,8 @@ pub struct RequestBook {
     records: Records<Continuation>,
     owners: HashMap<EnvelopeId, HashSet<EnvelopeId>>,
     cancelled: Vec<EnvelopeId>,
+    #[cfg(test)]
+    fail_cancel: bool,
 }
 
 impl RequestBook {
@@ -24,6 +26,8 @@ impl RequestBook {
             records: Records::new(),
             owners: HashMap::new(),
             cancelled: Vec::new(),
+            #[cfg(test)]
+            fail_cancel: false,
         }
     }
 
@@ -95,7 +99,17 @@ impl RequestBook {
         self.records.recover();
     }
 
+    #[cfg(test)]
+    pub fn fail_next_cancel(&mut self) {
+        self.fail_cancel = true;
+    }
+
     pub fn cancel(&mut self, owner: &EnvelopeId) -> Result<(), crate::errors::BoxError> {
+        #[cfg(test)]
+        if self.fail_cancel {
+            self.fail_cancel = false;
+            return Err(Box::from("lease"));
+        }
         let owned = self.owners.get(owner).cloned().unwrap_or_default();
         for request_id in owned {
             self.records.finish(&request_id, false)?;

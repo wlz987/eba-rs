@@ -212,8 +212,23 @@ fn main() -> Result<(), BoxError> {
         runtime.advance()?;
     }
     std::panic::set_hook(previous_hook);
-    if !pay_cancelled || runtime.stats().active != 0 {
-        return Err("orphan pay panic leaked".into());
+    let (pay_errors, last_pay) = pay_root
+        .payload
+        .downcast_ref::<Call>()
+        .map(|call| (call.pay_errors(), call.last_pay_error()))
+        .unwrap_or((0, None));
+    if !pay_cancelled
+        || runtime.stats().active != 0
+        || pay_errors != 1
+        || last_pay.as_deref() != Some("pay boom")
+    {
+        return Err(format!(
+            "orphan pay panic leaked active={} errors={} last={:?}",
+            runtime.stats().active,
+            pay_errors,
+            last_pay
+        )
+        .into());
     }
     println!("orphan ok");
     Ok(())

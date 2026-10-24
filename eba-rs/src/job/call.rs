@@ -1,3 +1,4 @@
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::RwLock;
 
@@ -17,6 +18,8 @@ pub struct Call {
     pub cancelled: RwLock<bool>,
     pub completion: RwLock<Option<Completion>>,
     pub pay: RwLock<Option<Pay>>,
+    pay_errors: Cell<usize>,
+    last_pay_error: RefCell<Option<String>>,
 }
 
 pub enum Outcome {
@@ -36,6 +39,8 @@ impl Call {
             cancelled: RwLock::new(false),
             completion: RwLock::new(None),
             pay: RwLock::new(None),
+            pay_errors: Cell::new(0),
+            last_pay_error: RefCell::new(None),
         }
     }
 
@@ -53,10 +58,21 @@ impl Call {
         }
         let pay = self.pay.write().unwrap().take();
         if let Some(pay) = pay {
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 pay(Outcome::Settled(completion));
-            }));
+            })) {
+                self.pay_errors.set(self.pay_errors.get() + 1);
+                *self.last_pay_error.borrow_mut() = Some(panic_message(payload.as_ref()));
+            }
         }
+    }
+
+    pub fn pay_errors(&self) -> usize {
+        self.pay_errors.get()
+    }
+
+    pub fn last_pay_error(&self) -> Option<String> {
+        self.last_pay_error.borrow().clone()
     }
 }
 
@@ -129,5 +145,15 @@ impl JobHooks for Wait {
             settle(&self.root, body, &self.root.header.id);
         }
         Ok(())
+    }
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(text) = payload.downcast_ref::<&str>() {
+        (*text).to_string()
+    } else if let Some(text) = payload.downcast_ref::<String>() {
+        text.clone()
+    } else {
+        String::from("pay panic")
     }
 }

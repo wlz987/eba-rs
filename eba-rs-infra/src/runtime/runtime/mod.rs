@@ -30,7 +30,7 @@ mod front;
 mod stats;
 
 /// Single writer for the bus it owns; Rust ownership enforces one runtime per bus.
-pub use self::stats::RuntimeStats;
+pub use self::stats::{HostStats, RuntimeStats};
 
 pub struct Runtime {
     hosts: IndexedMap<String, Rc<dyn JobHost>>,
