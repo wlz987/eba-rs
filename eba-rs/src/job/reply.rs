@@ -8,6 +8,8 @@ use crate::errors::{BoxError, BusError};
 struct Slot {
     body: Option<ResultBody>,
     closed: bool,
+    cancelled: bool,
+    callbacks: Vec<Rc<dyn Fn()>>,
 }
 
 /// A held request's one-shot slot. The runtime settles it on the next advance.
@@ -26,6 +28,9 @@ impl Reply {
         if slot.closed {
             return Err(Box::from(BusError("reply closed".into())));
         }
+        if slot.cancelled {
+            return Ok(());
+        }
         if slot.body.is_some() {
             return Err(Box::from(BusError("reply already settled".into())));
         }
@@ -39,6 +44,41 @@ impl Reply {
             None => err_payload(error, None)?,
         };
         self.send(body)
+    }
+
+    /// Settle as cancelled and notify adapters. A late send is a no-op.
+    pub fn cancel(&self, error: impl Into<String>) -> Result<bool, BoxError> {
+        let body = err_payload(error, None)?;
+        let callbacks = {
+            let mut slot = self.slot.borrow_mut();
+            if slot.body.is_some() || slot.closed {
+                return Ok(false);
+            }
+            slot.body = Some(body);
+            slot.cancelled = true;
+            std::mem::take(&mut slot.callbacks)
+        };
+        for callback in callbacks {
+            callback();
+        }
+        Ok(true)
+    }
+
+    pub fn on_cancel<F>(&self, callback: F)
+    where
+        F: Fn() + 'static,
+    {
+        let mut slot = self.slot.borrow_mut();
+        if slot.cancelled {
+            drop(slot);
+            callback();
+            return;
+        }
+        slot.callbacks.push(Rc::new(callback));
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.slot.borrow().cancelled
     }
 
     pub fn is_closed(&self) -> bool {

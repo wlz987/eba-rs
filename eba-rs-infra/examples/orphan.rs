@@ -9,7 +9,7 @@ use eba_rs_infra::errors::BoxError;
 use eba_rs_infra::job::call::settled;
 use eba_rs_infra::job::caller::{CallOptions, Caller};
 use eba_rs_infra::job::job::{Context, JobHooks, SharedIdGen};
-use eba_rs_infra::job::Service;
+use eba_rs_infra::job::{Reply, Service};
 use eba_rs_infra::mail::{Bus, Inbox};
 use eba_rs_infra::runtime::Runtime;
 use eba_rs_infra::time::ManualClock;
@@ -18,12 +18,17 @@ use eba_rs_infra::Payload;
 struct Hold {
     seen: Rc<RefCell<Option<String>>>,
     begun: Rc<Cell<usize>>,
+    cancelled: Rc<Cell<bool>>,
+    reply: Rc<RefCell<Option<Reply>>>,
 }
 
 impl JobHooks for Hold {
     fn begin(&self, ctx: &Context) -> Result<(), BoxError> {
         self.begun.set(self.begun.get() + 1);
-        ctx.hold()?;
+        let reply = ctx.hold()?;
+        let cancelled = Rc::clone(&self.cancelled);
+        reply.on_cancel(move || cancelled.set(true));
+        *self.reply.borrow_mut() = Some(reply);
         Ok(())
     }
 
@@ -71,12 +76,18 @@ fn main() -> Result<(), BoxError> {
     let mut runtime = Runtime::new(Bus::new(), Rc::new(ManualClock::new(0)), ids.clone());
     let seen: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
     let begun: Rc<Cell<usize>> = Rc::new(Cell::new(0));
+    let cancelled_flag = Rc::new(Cell::new(false));
+    let held_reply: Rc<RefCell<Option<Reply>>> = Rc::new(RefCell::new(None));
     let sink = Rc::clone(&seen);
     let counter = Rc::clone(&begun);
+    let cancel_flag = Rc::clone(&cancelled_flag);
+    let holder = Rc::clone(&held_reply);
     runtime.add(Service::mount("hold", 8, &["orphan.work"], move |_root| {
         Hold {
             seen: Rc::clone(&sink),
             begun: Rc::clone(&counter),
+            cancelled: Rc::clone(&cancel_flag),
+            reply: Rc::clone(&holder),
         }
     })?)?;
     let active_seen: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
@@ -109,7 +120,12 @@ fn main() -> Result<(), BoxError> {
         .and_then(|completion| completion.body.as_ref())
         .is_some_and(|body| matches!(body, ResultBody::Err { error, .. } if error == "cancelled"));
     let holder_ok = seen.borrow().as_deref() == Some("cancelled");
-    if !cancelled || !caller_ok || !holder_ok {
+    let signal_ok = cancelled_flag.get()
+        && held_reply
+            .borrow()
+            .as_ref()
+            .is_some_and(Reply::is_cancelled);
+    if !cancelled || !caller_ok || !holder_ok || !signal_ok {
         return Err(format!(
             "orphan caller={cancelled} caller_ok={caller_ok} holder={:?}",
             seen.borrow()

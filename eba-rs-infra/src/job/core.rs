@@ -195,12 +195,15 @@ impl Core {
             if !request_ids.contains(&root_id) {
                 continue;
             }
-            let state = job.state.borrow();
-            if !state.held {
-                continue;
-            }
-            if let Some(slot) = &state.reply_slot {
-                let _ = slot.fail("cancelled", None);
+            let slot = {
+                let state = job.state.borrow();
+                if !state.held {
+                    continue;
+                }
+                state.reply_slot.clone()
+            };
+            if let Some(slot) = slot {
+                let _ = slot.cancel("cancelled");
             }
         }
     }

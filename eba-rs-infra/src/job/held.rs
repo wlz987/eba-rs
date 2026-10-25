@@ -30,6 +30,7 @@ pub(crate) fn resolve_held(
             let Some(body) = slot.take() else {
                 continue;
             };
+            slot.close();
             ready = Some((job.clone(), state.root.clone(), body));
             break;
         }
@@ -57,10 +58,15 @@ pub(crate) fn resolve_held(
 
 pub(crate) fn close_held(core: &mut Core) {
     for job in core.jobs.values() {
-        let mut state = job.state.borrow_mut();
-        if let Some(slot) = state.reply_slot.take() {
+        let slot = {
+            let mut state = job.state.borrow_mut();
+            let slot = state.reply_slot.take();
+            state.held = false;
+            slot
+        };
+        if let Some(slot) = slot {
+            let _ = slot.cancel("host_closing");
             slot.close();
         }
-        state.held = false;
     }
 }
