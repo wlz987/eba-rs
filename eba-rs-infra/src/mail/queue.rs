@@ -44,6 +44,11 @@ impl<T> Queue<T> {
         self.items.pop_front()
     }
 
+    pub fn shift_if<F: FnMut(&T) -> bool>(&mut self, mut predicate: F) -> Option<T> {
+        let index = self.items.iter().position(&mut predicate)?;
+        self.items.remove(index)
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.items.iter()
     }

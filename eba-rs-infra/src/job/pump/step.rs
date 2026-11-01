@@ -22,6 +22,24 @@ pub fn step(
     if holding(core) && phase == 2 {
         return Ok(Step::Idle);
     }
+    if holding(core) && phase == 2 {
+        let Some(root) = core
+            .queue
+            .shift_if(|root| root.header.address.kind() == "event")
+        else {
+            return Ok(Step::Idle);
+        };
+        let mut reason = refused(core);
+        if reason.is_none() && core.jobs.len() >= core.active_limit {
+            reason = Some("active_full".into());
+        }
+        if let Some(reason) = reason {
+            reject(core, bus, id_gen, &root, &reason)?;
+        } else {
+            adopt(core, bus, clock, id_gen, root)?;
+        }
+        return Ok(Step::Advanced);
+    }
     if holding(core) && phase == 0 {
         if let Some(envelope) = pull_kind(&core.sub.inbox, "result") {
             resume(core, bus, clock, id_gen, &envelope)?;
