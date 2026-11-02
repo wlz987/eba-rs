@@ -20,9 +20,6 @@ pub fn step(
     phase: usize,
 ) -> Result<Step, BoxError> {
     if holding(core) && phase == 2 {
-        return Ok(Step::Idle);
-    }
-    if holding(core) && phase == 2 {
         let Some(root) = core
             .queue
             .shift_if(|root| root.header.address.kind() == "event")
