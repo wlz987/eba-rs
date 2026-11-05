@@ -2,8 +2,8 @@
 //!
 //! Mirrors `eba-ts/test/conformance.mjs` and the scenarios in
 //! `conformance/base.txt`: effect.resume, lease.revoke, record.ring,
-//! record.log and effect.host. Uses `ManualClock` + manual `advance()` for
-//! determinism.
+//! record.log, effect.host and context.builders. Uses `ManualClock` +
+//! manual `advance()` for determinism.
 
 use core::cell::RefCell;
 use std::rc::Rc;
