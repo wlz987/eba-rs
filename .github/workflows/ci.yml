@@ -17,8 +17,11 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # conformance 语义闸门按 no_std 默认 feature 跑（与 monorepo `make conformance` /
+      # eba-meta parity CI 同一 profile）；default-features 的覆盖在上面 test --workspace。
+      - run: cargo test -p eba-rs-infra --no-default-features --test conformance
       - run: cargo doc --workspace --no-deps
         env:
           RUSTDOCFLAGS: "-D warnings"
-      # examples/ 已于 2026-11 撤走；共享语义由 monorepo 的 conformance fixture 承载。
-      # （conformance.rs 在 cargo test 中已跑，见上面 test --workspace。）
+      # examples/ 已于 2026-11 撤走；共享语义 fixture 在 tests/conformance.rs，
+      # 上面向 default-features 跑一次，下面再向 no_std 默认 profile 跑一次。
