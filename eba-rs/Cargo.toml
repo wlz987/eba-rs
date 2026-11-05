@@ -3,13 +3,21 @@ name = "eba-rs"
 version = "0.6.6"
 edition = "2021"
 description = "EBA 的 std 门面：eba-rs-infra 核心 + tokio Drive"
+# publish=false：纯 re-export（pub use eba_rs_infra::*），无独立代码。
+# 外部消费者直接使用 eba-rs-infra（features = ["std", "uuid", "drive"]）。
+# 本包保留在 workspace 中供本地 dev/IDE 便利，不参与 cargo package/publish。
+publish = false
 keywords = ["runtime", "actor", "message", "single-writer"]
 categories = ["concurrency"]
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/wlz987/eba-rs"
+homepage = "https://github.com/wlz987/eba-rs"
 
 [dependencies]
-eba-rs-infra = { path = "../eba-rs-infra", features = ["std", "uuid", "drive"] }
+# version 必须声明：cargo package 会剥离 path，用 crates.io 上该版本；
+# 门面与 infra 版本须同步 bump（见 Makefile release 与发版约定）。
+eba-rs-infra = { version = "0.6.6", path = "../eba-rs-infra", features = ["std", "uuid", "drive"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }

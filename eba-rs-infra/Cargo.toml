@@ -7,6 +7,8 @@ keywords = ["runtime", "actor", "message", "no-std"]
 categories = ["concurrency", "no-std"]
 license = "MIT"
 readme = "README.md"
+repository = "https://github.com/wlz987/eba-rs"
+homepage = "https://github.com/wlz987/eba-rs"
 
 [features]
 default = ["std", "uuid"]
