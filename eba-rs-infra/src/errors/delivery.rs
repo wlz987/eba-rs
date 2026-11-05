@@ -11,7 +11,7 @@ pub struct DeliveryError {
     pub envelope: Arc<Envelope>,
     pub reason: String,
     pub source: Option<Box<dyn core::error::Error>>,
-    pub outbox_full: bool,
+    pub mailbox_busy: bool,
 }
 
 impl DeliveryError {
@@ -20,7 +20,7 @@ impl DeliveryError {
             envelope,
             reason: reason.into(),
             source: None,
-            outbox_full: false,
+            mailbox_busy: false,
         }
     }
 
@@ -29,16 +29,16 @@ impl DeliveryError {
             envelope,
             reason: reason.into(),
             source: Some(source),
-            outbox_full: false,
+            mailbox_busy: false,
         }
     }
 
-    pub fn outbox_full(envelope: Arc<Envelope>) -> Self {
+    pub fn mailbox_busy(envelope: Arc<Envelope>) -> Self {
         DeliveryError {
             envelope,
             reason: OUTBOX_FULL.into(),
             source: None,
-            outbox_full: true,
+            mailbox_busy: true,
         }
     }
 }
@@ -89,10 +89,10 @@ pub fn is_lease_pending(error: &BoxError) -> bool {
     error.downcast_ref::<LeasePending>().is_some()
 }
 
-pub fn is_outbox_full(error: &BoxError) -> bool {
+pub fn is_mailbox_busy(error: &BoxError) -> bool {
     error
         .downcast_ref::<DeliveryError>()
-        .is_some_and(|delivery| delivery.outbox_full)
+        .is_some_and(|delivery| delivery.mailbox_busy)
 }
 
 pub fn delivery_envelope(error: &BoxError) -> Option<Arc<Envelope>> {

@@ -10,6 +10,11 @@ mod prelude {
     pub use alloc::vec::Vec;
 }
 
+#[cfg(feature = "drive")]
+pub mod drive;
+#[cfg(feature = "drive")]
+mod wake;
+
 pub mod collections;
 pub mod envelope;
 pub mod errors;
@@ -18,8 +23,11 @@ pub mod mail;
 pub mod notify;
 pub mod park;
 pub mod pattern;
+pub mod pool;
+pub mod record;
 pub mod rendezvous;
 pub mod runtime;
+pub mod schema;
 pub mod time;
 
 pub use park::Park;

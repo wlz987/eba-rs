@@ -1,10 +1,13 @@
 use crate::prelude::*;
 use alloc::rc::Rc;
+#[cfg(feature = "std")]
+use core::cell::{Cell, RefCell};
 use spin::RwLock;
 
 use crate::envelope::result::{err_payload, Completion, ResultBody};
 use crate::envelope::{Envelope, EnvelopeId};
 use crate::errors::{BoxError, BusError};
+use crate::job::effect::Effect;
 use crate::job::job::{Context, Job, JobHooks};
 use crate::Payload;
 
@@ -18,6 +21,10 @@ pub struct Call {
     pub cancelled: RwLock<bool>,
     pub completion: RwLock<Option<Completion>>,
     pub pay: RwLock<Option<Pay>>,
+    #[cfg(feature = "std")]
+    pay_errors: Cell<usize>,
+    #[cfg(feature = "std")]
+    last_pay_error: RefCell<Option<String>>,
 }
 
 pub enum Outcome {
@@ -37,6 +44,10 @@ impl Call {
             cancelled: RwLock::new(false),
             completion: RwLock::new(None),
             pay: RwLock::new(None),
+            #[cfg(feature = "std")]
+            pay_errors: Cell::new(0),
+            #[cfg(feature = "std")]
+            last_pay_error: RefCell::new(None),
         }
     }
 
@@ -53,9 +64,40 @@ impl Call {
             *held = Some(completion.clone());
         }
         let pay = self.pay.write().take();
-        if let Some(pay) = pay {
-            pay(Outcome::Settled(completion));
+        let Some(pay) = pay else { return };
+        #[cfg(feature = "std")]
+        {
+            if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                pay(Outcome::Settled(completion));
+            })) {
+                self.pay_errors.set(self.pay_errors.get() + 1);
+                *self.last_pay_error.borrow_mut() = Some(panic_message(payload.as_ref()));
+                std::panic::resume_unwind(payload);
+            }
         }
+        #[cfg(not(feature = "std"))]
+        pay(Outcome::Settled(completion));
+    }
+
+    #[cfg(feature = "std")]
+    pub fn pay_errors(&self) -> usize {
+        self.pay_errors.get()
+    }
+
+    #[cfg(feature = "std")]
+    pub fn last_pay_error(&self) -> Option<String> {
+        self.last_pay_error.borrow().clone()
+    }
+}
+
+#[cfg(feature = "std")]
+fn panic_message(payload: &(dyn core::any::Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        String::from("panic")
     }
 }
 
@@ -91,35 +133,38 @@ impl Wait {
 }
 
 impl JobHooks for Wait {
-    fn begin(&self, ctx: &Context) -> Result<(), BoxError> {
+    fn begin_effects(&self, ctx: &Context) -> Result<Vec<Effect>, BoxError> {
         let root = ctx.root();
         let call = root
             .payload
             .downcast_ref::<Call>()
             .ok_or_else(|| Box::from(BusError("admitted root has no call".into())) as BoxError)?;
         if *call.cancelled.read() {
-            let completion = Completion {
+            call.complete(Completion {
                 request_id: root.header.id.clone(),
                 body: Some(err_payload("cancelled", None)?),
-            };
-            return <Wait as JobHooks>::on_stage_result(self, ctx, STAGE, Rc::new(completion));
+            });
+            return Ok(Vec::new());
         }
-        let request_id = ctx.request(STAGE, &call.topic, call.payload.clone(), call.timeout_ms)?;
-        *call.request_id.write() = Some(request_id);
-        Ok(())
+        let ask = ctx.ask(STAGE, &call.topic, call.payload.clone(), call.timeout_ms)?;
+        let Effect::Ask { intent } = &ask else {
+            unreachable!()
+        };
+        *call.request_id.write() = Some(intent.request.header.id.clone());
+        Ok(vec![ask])
     }
 
-    fn on_stage_result(
+    fn on_stage_effects(
         &self,
         ctx: &Context,
         _stage: &str,
         completion: Rc<Completion>,
-    ) -> Result<(), BoxError> {
+    ) -> Result<Vec<Effect>, BoxError> {
         let root = ctx.root();
         if let Some(call) = root.payload.downcast_ref::<Call>() {
             call.complete((*completion).clone());
         }
-        Ok(())
+        Ok(Vec::new())
     }
 
     fn on_finished(&self, body: Option<&ResultBody>) -> Result<(), BoxError> {

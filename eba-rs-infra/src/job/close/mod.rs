@@ -46,6 +46,7 @@ fn settle_inbound(core: &mut Core, mut notice: usize) -> Result<(), BoxError> {
 }
 
 pub fn close_host(core: &mut Core, bus: &Bus) -> Result<Vec<Rc<Envelope>>, BoxError> {
+    close_held(core);
     if core.state == HostState::Closed {
         return Ok(core.abandoned.clone().unwrap_or_default());
     }
@@ -58,7 +59,6 @@ pub fn close_host(core: &mut Core, bus: &Bus) -> Result<Vec<Rc<Envelope>>, BoxEr
 }
 
 fn close_pass(core: &mut Core, bus: &Bus) -> Result<(), BoxError> {
-    close_held(core);
     let (hook_error, lease_error) = finish_jobs(core);
     settle_inbound(core, core.queue.size() + held_count(&core.sub.inbox))?;
     recompute_pause(core);
@@ -76,7 +76,7 @@ fn close_pass(core: &mut Core, bus: &Bus) -> Result<(), BoxError> {
             None => pending,
         });
     }
-    let drained = core.outbox.drain();
+    let drained = core.mailbox.drain();
     core.abandoned_mut().extend(drained);
 
     while core.pending.is_some() || !core.rest.is_empty() {

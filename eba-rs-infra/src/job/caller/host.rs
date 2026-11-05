@@ -40,7 +40,7 @@ pub(super) fn end(_caller: &Caller, core: &mut Core, job: &Job) -> Result<bool, 
         return Ok(false);
     };
     let body = err_payload("cancelled", None)?;
-    core.book.cancel(&root.header.id)?;
+    core.book.revoke(&root.header.id)?;
     drop_job(core, job);
     mark_read(&core.sub.inbox);
     call.complete(Completion {

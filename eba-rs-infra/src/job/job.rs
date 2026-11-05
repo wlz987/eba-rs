@@ -6,7 +6,8 @@ use crate::envelope::idgen::IdGen;
 use crate::envelope::result::{Completion, ResultBody};
 use crate::envelope::Envelope;
 use crate::errors::BoxError;
-use crate::job::reply::Reply;
+use crate::job::effect::Effect;
+use crate::job::job_lease::JobLease;
 
 pub use crate::job::context::{seal_context, Commit, Context};
 
@@ -63,14 +64,27 @@ pub struct State {
     pub notice: Notice,
     pub replied: bool,
     pub held: bool,
-    pub reply_slot: Option<Reply>,
+    pub reply_slot: Option<JobLease>,
     pub reply_body: Option<ResultBody>,
     pub pending_control: Option<Control>,
 }
 
 pub trait JobHooks {
+    fn begin_effects(&self, ctx: &Context) -> Result<Vec<Effect>, BoxError> {
+        self.begin(ctx)?;
+        Ok(Vec::new())
+    }
     fn begin(&self, _ctx: &Context) -> Result<(), BoxError> {
         Ok(())
+    }
+    fn on_stage_effects(
+        &self,
+        ctx: &Context,
+        stage: &str,
+        completion: Rc<Completion>,
+    ) -> Result<Vec<Effect>, BoxError> {
+        self.on_stage_result(ctx, stage, completion)?;
+        Ok(Vec::new())
     }
     fn on_stage_result(
         &self,
@@ -80,6 +94,15 @@ pub trait JobHooks {
     ) -> Result<(), BoxError> {
         Ok(())
     }
+    fn on_resume(&self, _ctx: &Context) -> Result<Vec<Effect>, BoxError> {
+        Ok(Vec::new())
+    }
+
+    fn on_finished_effects(&self, body: Option<&ResultBody>) -> Result<Vec<Effect>, BoxError> {
+        self.on_finished(body)?;
+        Ok(Vec::new())
+    }
+
     fn on_finished(&self, _body: Option<&ResultBody>) -> Result<(), BoxError> {
         Ok(())
     }
@@ -117,7 +140,7 @@ impl Job {
         self.state.borrow().lifecycle == Lifecycle::Finished
     }
 
-    /// 账来；这边账是 `Job` 的字段，构造器就是 `Job::new`，那一问记在 `tests/boundaries.rs` 的账上。
+    /// 返回 `Job` 内部共享的状态句柄；构造器是 `Job::new`。
     pub fn state_ref(&self) -> Rc<RefCell<State>> {
         Rc::clone(&self.state)
     }

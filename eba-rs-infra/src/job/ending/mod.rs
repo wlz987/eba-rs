@@ -1,8 +1,9 @@
 use alloc::rc::Rc;
-use alloc::string::{String, ToString};
+use alloc::string::String;
 
 use crate::errors::{note_settled, BoxError};
 use crate::job::core::{Core, HostState};
+use crate::job::finished::apply_finished;
 use crate::job::job::{set_lifecycle, Control, Job, Lifecycle, Notice};
 
 mod release;
@@ -21,7 +22,7 @@ pub fn seal(core: &mut Core, job: &Job) -> Result<(), BoxError> {
         }
     }
     let root_id = job.root().header.id.clone();
-    core.book.cancel(&root_id)
+    core.book.revoke(&root_id)
 }
 
 pub(crate) fn cancel_job(
@@ -35,18 +36,24 @@ pub(crate) fn cancel_job(
             return Ok(false);
         }
     }
+    if core.book.revoke(&job.root().header.id).is_err() {
+        return Ok(false);
+    }
     {
         let mut state = job.state.borrow_mut();
         set_lifecycle(&mut state, Lifecycle::Finished);
         state.notice = Notice::Finished;
     }
-    let hook = job.hooks.on_finished(Some(body));
-    let sealed = seal(core, job);
+    #[cfg(feature = "std")]
+    let hook = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        job.hooks.on_finished_effects(Some(body))
+    }))
+    .unwrap_or_else(|_| Err("cleanup panic".into()));
+    #[cfg(not(feature = "std"))]
+    let hook = job.hooks.on_finished_effects(Some(body));
+    let applied = hook.and_then(|effects| apply_finished(core, &effects));
     drop_job(core, job);
-    for error in [hook.err(), sealed.err()].into_iter().flatten() {
-        core.cancel_errors += 1;
-        core.last_cancel_error = Some(error.as_ref().to_string());
-    }
+    let _ = applied;
     Ok(true)
 }
 
@@ -65,13 +72,14 @@ pub(crate) fn drop_job(core: &mut Core, job: &Job) {
     }
 }
 
-fn notify(job: &Job, control: Control) -> Result<(), BoxError> {
+fn notify(core: &mut Core, job: &Job, control: Control) -> Result<(), BoxError> {
     {
         let mut state = job.state.borrow_mut();
         set_lifecycle(&mut state, Lifecycle::Finished);
         state.notice = Notice::Finished;
     }
-    job.hooks.on_finished(control.body.as_ref())
+    let effects = job.hooks.on_finished_effects(control.body.as_ref())?;
+    apply_finished(core, &effects)
 }
 
 fn same_job(a: &Job, b: &Job) -> bool {
@@ -92,7 +100,7 @@ pub(crate) fn settle_ending(
     let Some(control) = control else {
         return Ok(());
     };
-    let outcome = notify(job, control);
+    let outcome = notify(core, job, control);
     drop_job(core, job);
     match outcome {
         Err(error) if matches!(job.state.borrow().notice, Notice::Finished) => {

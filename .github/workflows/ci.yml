@@ -20,10 +20,5 @@ jobs:
       - run: cargo doc --workspace --no-deps
         env:
           RUSTDOCFLAGS: "-D warnings"
-      - run: |
-          for file in eba-rs/examples/*.rs; do
-            cargo run --quiet --example "$(basename "$file" .rs)" -p eba-rs
-          done
-          for file in eba-rs-infra/examples/*.rs; do
-            cargo run --quiet --example "$(basename "$file" .rs)" -p eba-rs-infra
-          done
+      # examples/ 已于 2026-11 撤走；共享语义由 monorepo 的 conformance fixture 承载。
+      # （conformance.rs 在 cargo test 中已跑，见上面 test --workspace。）

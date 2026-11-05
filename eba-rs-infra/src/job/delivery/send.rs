@@ -3,7 +3,7 @@ use alloc::rc::Rc;
 use crate::envelope::reply::Matchmaker;
 use crate::envelope::result::ResultBody;
 use crate::envelope::Envelope;
-use crate::errors::{combine_failures, is_outbox_full, BoxError};
+use crate::errors::{combine_failures, is_mailbox_busy, BoxError};
 use crate::job::core::Core;
 use crate::job::ending::{drop_job, seal};
 use crate::job::job::{Control, Job, SharedIdGen};
@@ -20,10 +20,10 @@ pub fn hold_or_send(
     job: Option<Job>,
     envelope: Rc<Envelope>,
 ) -> Result<bool, BoxError> {
-    match core.outbox.send(bus, Rc::clone(&envelope)) {
+    match core.mailbox.send(bus, Rc::clone(&envelope)) {
         Ok(()) => Ok(true),
         Err(error) => {
-            let full = is_outbox_full(&error);
+            let full = is_mailbox_busy(&error);
             park(core, job, Rc::clone(&envelope));
             if full {
                 return Ok(false);
@@ -39,7 +39,7 @@ pub fn release_result(core: &mut Core, bus: &Bus) -> Result<bool, BoxError> {
         let Some((slot, envelope, job)) = next_sendable(core) else {
             return Ok(sent);
         };
-        if !core.outbox.has_room() {
+        if !core.mailbox.has_room() {
             return Ok(sent);
         }
         let pending_slot = matches!(slot, Slot::Pending);
@@ -55,8 +55,8 @@ pub fn release_result(core: &mut Core, bus: &Bus) -> Result<bool, BoxError> {
             }
         };
         let pending_cleared = pending_slot && core.pending.is_none();
-        if let Err(error) = core.outbox.send(bus, Rc::clone(&envelope)) {
-            let full = is_outbox_full(&error);
+        if let Err(error) = core.mailbox.send(bus, Rc::clone(&envelope)) {
+            let full = is_mailbox_busy(&error);
             if pending_cleared {
                 core.pending = Some(Rc::clone(&envelope));
                 core.pending_job = job.clone();
@@ -69,7 +69,7 @@ pub fn release_result(core: &mut Core, bus: &Bus) -> Result<bool, BoxError> {
             }
             return Err(raise_delivery_failure(core, error));
         }
-        if !core.outbox.contains(&envelope) {
+        if !core.mailbox.contains(&envelope) {
             note_delivery_success(core, &envelope);
         }
         complete_held(core, job)?;

@@ -1,0 +1,34 @@
+use crate::prelude::*;
+use alloc::rc::Rc;
+
+use crate::envelope::Envelope;
+use crate::mail::bus::Bus;
+use crate::notify::watch::Interest;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Idle,
+    Checked,
+    Advanced,
+}
+
+pub(super) struct TopicQueue {
+    pub(super) interest: Rc<Interest>,
+    pub(super) items: Vec<Rc<Envelope>>,
+}
+
+pub struct TopicLedger {
+    pub topic: String,
+    pub items: Vec<Rc<Envelope>>,
+    pub interest: Rc<Interest>,
+}
+
+pub struct MailboxLedger {
+    pub count: usize,
+    pub candidates: Vec<String>,
+    pub groups: Vec<TopicLedger>,
+}
+
+pub(super) fn awaited(bus: &Bus, envelope: &Rc<Envelope>) -> bool {
+    bus.waiting(envelope.header.address.correlation_id())
+}

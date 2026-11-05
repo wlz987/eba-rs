@@ -34,6 +34,7 @@ impl Runtime {
             return Err(Box::from(BusError("duplicate host actor".into())));
         }
         attach(&mut core.borrow_mut(), self.bus_ref())?;
+        core.borrow_mut().clock = Some(self.clock.clone());
         self.hosts.insert(actor.clone(), host);
         let agenda: Rc<dyn AgendaHost> = self.agenda.clone();
         core.borrow().signal.bind(&agenda, &actor);

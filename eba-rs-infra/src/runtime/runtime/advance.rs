@@ -27,9 +27,7 @@ impl Runtime {
             for host in self.hosts.values() {
                 let core = host.core();
                 let mut core = core.borrow_mut();
-                core.cancel_queued(&cancelled);
-                core.cancel_held(&cancelled);
-                core.cancel_jobs(&cancelled)?;
+                core.revoke(&cancelled)?;
             }
         }
         Ok(cancelled)
@@ -37,7 +35,21 @@ impl Runtime {
 
     fn advance_inner(&mut self) -> Result<bool, BoxError> {
         let now = self.schedule_now();
+        let delta = now.saturating_sub(self.observed.unwrap_or(now));
         self.observed = Some(now);
+        for host in self.hosts.values() {
+            host.core().borrow_mut().charge_leases(delta)?;
+        }
+        for host in self.hosts.values() {
+            host.core().borrow_mut().expire_leases(now)?;
+            host.core().borrow_mut().fire_due_timers(now);
+        }
+        for host in self.hosts.values() {
+            if host.core().borrow_mut().settle_records()? {
+                let core = host.core();
+                self.sync_core(&core);
+            }
+        }
         let noticed = close_count();
         if noticed != self.noticed_closes {
             self.noticed_closes = noticed;

@@ -53,7 +53,8 @@ impl Service {
             queue_limit: CoreOptions::DEFAULT_QUEUE_LIMIT,
             active_limit,
             work_budget: CoreOptions::DEFAULT_WORK_BUDGET,
-            outbox_limit: CoreOptions::DEFAULT_OUTBOX_LIMIT,
+            mailbox_limit: CoreOptions::DEFAULT_MAILBOX_LIMIT,
+            record_sink: None,
             make_job: Rc::new(move |root| Ok(Job::new(root.clone(), factory(root)))),
             on_rejected: Rc::new(|_, _| Ok(())),
         })?;

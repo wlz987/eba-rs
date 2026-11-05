@@ -1,12 +1,14 @@
 use crate::prelude::*;
 use alloc::rc::Rc;
+use alloc::string::String;
 use core::cell::RefCell;
 
 use crate::envelope::result::{has_result_shape, ResultBody};
 use crate::envelope::{make_envelope, Envelope, EnvelopeId, MakeEnvelope};
 use crate::errors::{BackpressureError, BoxError, BusError};
+use crate::job::effect::{Effect, EffectHost};
 use crate::job::job::{Control, Intent, Lifecycle, SharedIdGen, State};
-use crate::job::reply::Reply;
+use crate::job::job_lease::JobLease;
 use crate::Payload;
 
 mod commit;
@@ -23,11 +25,13 @@ pub struct Buffer {
     pub requests: Vec<Intent>,
     pub reply: Option<ResultBody>,
     pub control: Option<Control>,
-    pub hold: Option<Reply>,
+    pub hold: Option<JobLease>,
 }
 
 pub struct Context {
     buffer: RefCell<Buffer>,
+    effects: RefCell<Vec<Effect>>,
+    host: RefCell<Option<Rc<dyn EffectHost>>>,
 }
 
 impl Context {
@@ -51,7 +55,53 @@ impl Context {
                 control: None,
                 hold: None,
             }),
+            effects: RefCell::new(Vec::new()),
+            host: RefCell::new(None),
         }
+    }
+
+    pub fn set_host(&self, host: Rc<dyn EffectHost>) {
+        *self.host.borrow_mut() = Some(host);
+    }
+
+    pub(crate) fn effect_host(&self) -> Result<Rc<dyn EffectHost>, BoxError> {
+        self.host
+            .borrow()
+            .clone()
+            .ok_or_else(|| Box::from(BusError("Effect host is not attached".into())))
+    }
+
+    pub fn tell(&self, topic: &str, payload: Payload) -> Result<(), BoxError> {
+        self.effects.borrow_mut().push(Effect::Tell {
+            topic: topic.into(),
+            payload,
+        });
+        Ok(())
+    }
+
+    pub fn record(&self, topic: &str, payload: Payload) -> Result<(), BoxError> {
+        self.effects.borrow_mut().push(Effect::Record {
+            topic: topic.into(),
+            payload,
+        });
+        Ok(())
+    }
+
+    pub fn barrier(&self, up_to: Option<u64>) -> Result<(), BoxError> {
+        self.effects.borrow_mut().push(Effect::Barrier { up_to });
+        Ok(())
+    }
+
+    pub fn timer(&self, deadline_ms: u64) -> Result<(), BoxError> {
+        self.effects
+            .borrow_mut()
+            .push(Effect::Timer { deadline_ms });
+        Ok(())
+    }
+
+    pub fn close(&self, reason: Option<String>) -> Result<(), BoxError> {
+        self.effects.borrow_mut().push(Effect::Close { reason });
+        Ok(())
     }
 
     pub fn root(&self) -> Rc<Envelope> {
@@ -78,20 +128,90 @@ impl Context {
             return Err(Box::from(BusError("job already finished".into())));
         }
         buffer.busy = true;
-        let outcome = request_intent(&mut buffer, stage, topic, payload, timeout);
+        let asks = self
+            .effects
+            .borrow()
+            .iter()
+            .filter(|effect| matches!(effect, Effect::Ask { .. }))
+            .count();
+        let outcome = build_intent(&mut buffer, stage, topic, payload, timeout, asks);
         buffer.busy = false;
-        outcome
+        let intent = outcome?;
+        let request_id = intent.request.header.id.clone();
+        drop(buffer);
+        self.effects.borrow_mut().push(Effect::Ask { intent });
+        Ok(request_id)
+    }
+
+    pub fn ask(
+        &self,
+        stage: &str,
+        topic: &str,
+        payload: Payload,
+        timeout: Option<u64>,
+    ) -> Result<Effect, BoxError> {
+        let mut buffer = self.buffer.borrow_mut();
+        if buffer.busy {
+            return Err(Box::from(BusError("reentrant Context mutation".into())));
+        }
+        if buffer.id_gen.is_none() {
+            return Err(Box::from(BusError(
+                "Context is valid only during its callback".into(),
+            )));
+        }
+        buffer.busy = true;
+        let asks = self
+            .effects
+            .borrow()
+            .iter()
+            .filter(|effect| matches!(effect, Effect::Ask { .. }))
+            .count();
+        let outcome = build_intent(&mut buffer, stage, topic, payload, timeout, asks);
+        buffer.busy = false;
+        Ok(Effect::Ask { intent: outcome? })
+    }
+
+    pub(crate) fn push_intent(&self, intent: Intent) -> Result<(), BoxError> {
+        let mut buffer = self.buffer.borrow_mut();
+        if buffer.id_gen.is_none() {
+            return Err(Box::from(BusError(
+                "Context is valid only during its callback".into(),
+            )));
+        }
+        buffer.requests.push(intent);
+        Ok(())
+    }
+
+    pub fn settle(&self, lease: JobLease, body: ResultBody) -> Result<(), BoxError> {
+        self.effects.borrow_mut().push(Effect::Settle(lease, body));
+        Ok(())
+    }
+
+    pub fn revoke(&self, lease: JobLease, error: alloc::string::String) -> Result<(), BoxError> {
+        self.effects.borrow_mut().push(Effect::Revoke(lease, error));
+        Ok(())
     }
 
     pub fn reply(&self, body: ResultBody) -> Result<(), BoxError> {
-        self.mutate(|buffer| put_reply(buffer, body))
+        self.effects.borrow_mut().push(Effect::Reply(body));
+        Ok(())
     }
 
     pub fn finish(&self, body: Option<ResultBody>) -> Result<(), BoxError> {
-        self.mutate(|buffer| finish_control(buffer, body))
+        self.effects.borrow_mut().push(Effect::Finish(body));
+        Ok(())
     }
 
-    pub fn hold(&self) -> Result<Reply, BoxError> {
+    pub fn hold(
+        &self,
+        deadline_ms: Option<u64>,
+        budget_ms: Option<u64>,
+    ) -> Result<JobLease, BoxError> {
+        if !self.effects.borrow().is_empty() {
+            return Err(Box::from(BusError(
+                "cannot hold after other effects".into(),
+            )));
+        }
         self.edit(|buffer| {
             if buffer.hold.is_some() {
                 return Err(Box::from(BusError("job already held".into())));
@@ -111,20 +231,48 @@ impl Context {
                     "cannot hold with pending requests".into(),
                 )));
             }
-            let reply = Reply::new();
-            {
-                let mut state = buffer.job.borrow_mut();
-                state.held = true;
-                state.reply_slot = Some(reply.clone());
+            let lease = JobLease::with_options(deadline_ms, budget_ms);
+            self.effects.borrow_mut().push(Effect::Hold(lease.clone()));
+            Ok(lease)
+        })
+    }
+
+    pub(crate) fn apply_reply(&self, body: ResultBody) -> Result<(), BoxError> {
+        self.mutate(|buffer| put_reply(buffer, body))
+    }
+
+    pub(crate) fn apply_finish(&self, body: Option<ResultBody>) -> Result<(), BoxError> {
+        self.mutate(|buffer| finish_control(buffer, body))
+    }
+
+    pub(crate) fn apply_hold(&self, lease: JobLease) -> Result<(), BoxError> {
+        self.mutate(|buffer| {
+            if buffer.hold.is_some() {
+                return Err(Box::from(BusError("job already held".into())));
             }
-            buffer.hold = Some(reply.clone());
-            Ok(reply)
+            buffer.hold = Some(lease.clone());
+            let mut state = buffer.job.borrow_mut();
+            if state.lifecycle != Lifecycle::Active {
+                return Err(Box::from(BusError("job already finished".into())));
+            }
+            state.held = true;
+            state.reply_slot = Some(lease);
+            Ok(())
         })
     }
 
     pub fn finished(&self) -> bool {
         let buffer = self.buffer.borrow();
-        buffer.control.is_some() || buffer.job.borrow().lifecycle == Lifecycle::Finished
+        self.effects
+            .borrow()
+            .iter()
+            .any(|effect| matches!(effect, Effect::Finish(_)))
+            || buffer.control.is_some()
+            || buffer.job.borrow().lifecycle == Lifecycle::Finished
+    }
+
+    pub fn effects(&self) -> Vec<Effect> {
+        self.effects.borrow().clone()
     }
 
     fn mutate<F>(&self, action: F) -> Result<(), BoxError>
@@ -154,19 +302,20 @@ impl Context {
     }
 }
 
-fn request_intent(
+fn build_intent(
     buffer: &mut Buffer,
     stage: &str,
     topic: &str,
     payload: Payload,
     timeout: Option<u64>,
-) -> Result<EnvelopeId, BoxError> {
+    extra: usize,
+) -> Result<Intent, BoxError> {
     if buffer.hold.is_some() {
         return Err(Box::from(BusError("job already held".into())));
     }
     {
         let job = buffer.job.borrow();
-        if buffer.pending_count + buffer.requests.len() >= job.max_inflight {
+        if buffer.pending_count + buffer.requests.len() + extra >= job.max_inflight {
             return Err(Box::from(BackpressureError("max_inflight".into())));
         }
         let cause = job.root.header.cause.clone();
@@ -188,13 +337,11 @@ fn request_intent(
             correlation_id: None,
         })
         .map_err(|error| Box::new(error) as BoxError)?;
-        let returned = request.header.id.clone();
-        buffer.requests.push(Intent {
+        Ok(Intent {
             stage: stage.into(),
             request: Rc::new(request),
             timeout,
-        });
-        Ok(returned)
+        })
     }
 }
 

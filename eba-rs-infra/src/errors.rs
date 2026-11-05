@@ -5,7 +5,7 @@ mod delivery;
 mod mail;
 
 pub use self::delivery::{
-    delivery_envelope, is_lease_pending, is_outbox_full, DeliveryError, LeasePending,
+    delivery_envelope, is_lease_pending, is_mailbox_busy, DeliveryError, LeasePending,
 };
 pub use self::mail::{BackpressureError, BusError, EnvelopeBuildError, InvalidTopic, MailboxFull};
 
@@ -20,7 +20,7 @@ impl core::error::Error for MultipleFailures {}
 
 pub type BoxError = Box<dyn core::error::Error>;
 
-pub const OUTBOX_FULL: &str = "result outbox full";
+pub const OUTBOX_FULL: &str = "result mailbox full";
 pub const REENTRANT: &str = "reentrant host execution";
 
 #[derive(Debug)]
@@ -75,22 +75,22 @@ pub fn combine_failures(original: BoxError, secondary: BoxError) -> BoxError {
         chosen = Some((
             delivery.envelope.clone(),
             delivery.reason.clone(),
-            delivery.outbox_full,
+            delivery.mailbox_busy,
         ));
     } else if let Some(delivery) = original.downcast_ref::<DeliveryError>() {
         chosen = Some((
             delivery.envelope.clone(),
             delivery.reason.clone(),
-            delivery.outbox_full,
+            delivery.mailbox_busy,
         ));
     }
     let grouped = MultipleFailures(vec![original, secondary]);
-    if let Some((envelope, reason, outbox_full)) = chosen {
+    if let Some((envelope, reason, mailbox_busy)) = chosen {
         let error = DeliveryError {
             envelope,
             reason,
             source: Some(Box::new(grouped)),
-            outbox_full,
+            mailbox_busy,
         };
         Box::new(error)
     } else {

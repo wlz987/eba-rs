@@ -146,13 +146,18 @@ impl Runtime {
 fn sync_state(agenda: &Agenda, core: &Core) {
     let closing = core.state == HostState::Closing;
     let retired = core.state == HostState::Closed;
+    let mut deadline = core.book.next_deadline_ms();
+    let timer = core.next_timer_ms();
+    if !closing && !retired {
+        match (deadline, timer) {
+            (Some(book), Some(user)) => deadline = Some(book.min(user)),
+            (None, Some(user)) => deadline = Some(user),
+            _ => {}
+        }
+    }
     agenda.update(
         &core.sub.actor_id.0,
-        if closing || retired {
-            None
-        } else {
-            core.book.next_deadline_ms()
-        },
+        if closing || retired { None } else { deadline },
         closing || (!retired && has_work(core)),
         !closing && !retired && scheduled(core),
     );

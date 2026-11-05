@@ -11,7 +11,7 @@ use super::{drop_job, notify};
 pub fn release_ending(core: &mut Core, job: &Job) -> Result<Rc<Envelope>, BoxError> {
     let root = job.root();
     let ending = job.state.borrow_mut().pending_control.take();
-    if let Err(error) = core.book.cancel(&root.header.id) {
+    if let Err(error) = core.book.revoke(&root.header.id) {
         job.state.borrow_mut().pending_control = ending;
         return Err(if is_lease_pending(&error) {
             error
@@ -25,7 +25,7 @@ pub fn release_ending(core: &mut Core, job: &Job) -> Result<Rc<Envelope>, BoxErr
         set_lifecycle(&mut state, Lifecycle::Finished);
     }
     let outcome = match ending {
-        Some(ending) => notify(job, ending),
+        Some(ending) => notify(core, job, ending),
         None => Ok(()),
     };
     drop_job(core, job);

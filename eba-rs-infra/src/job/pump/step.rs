@@ -1,7 +1,7 @@
 use crate::errors::{BoxError, DeliveryError};
 use crate::job::core::Core;
 use crate::job::job::SharedIdGen;
-use crate::job::outbox::Step;
+use crate::job::mailbox::Step;
 use crate::mail::bus::Bus;
 use crate::mail::inbox::pull_kind;
 use crate::notify::signal::DELIVERY;
@@ -54,7 +54,7 @@ pub fn step(
         return Ok(Step::Advanced);
     }
     if phase == 3 && (retry_due(core) || core.signal.has(DELIVERY)) {
-        let mut step_value = match core.outbox.flush_one(bus) {
+        let mut step_value = match core.mailbox.flush_one(bus) {
             Ok((flush_step, sent)) => {
                 if let Some(sent) = sent {
                     note_delivery_success(core, &sent);

@@ -67,7 +67,8 @@ impl Caller {
                 queue_limit: CoreOptions::DEFAULT_QUEUE_LIMIT,
                 active_limit,
                 work_budget: CoreOptions::DEFAULT_WORK_BUDGET,
-                outbox_limit: CoreOptions::DEFAULT_OUTBOX_LIMIT,
+                mailbox_limit: CoreOptions::DEFAULT_MAILBOX_LIMIT,
+                record_sink: None,
                 make_job,
                 on_rejected,
             });
@@ -128,7 +129,7 @@ impl Caller {
         Ok(rc)
     }
 
-    pub fn cancel(&self, root_id: &EnvelopeId) -> Result<bool, BoxError> {
+    pub fn revoke(&self, root_id: &EnvelopeId) -> Result<bool, BoxError> {
         let core_ref = self.core.clone();
         let job = {
             let core = core_ref.borrow();

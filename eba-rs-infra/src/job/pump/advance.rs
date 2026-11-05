@@ -38,7 +38,7 @@ pub fn has_work(core: &Core) -> bool {
         || !core.jobs.is_empty()
         || core.queue.size() > 0
         || core.book.size() > 0
-        || core.outbox.size() > 0
+        || core.mailbox.size() > 0
         || holding(core)
         || core.book.unreleased() > 0
         || core.signal.has(READ)

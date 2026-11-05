@@ -6,9 +6,9 @@ use super::execution::reject;
 use super::hook::run_hook;
 use crate::envelope::Envelope;
 use crate::errors::{combine_failures, BoxError};
-use crate::job::book::Continuation;
 use crate::job::core::Core;
 use crate::job::job::{set_lifecycle, Job, Lifecycle, SharedIdGen};
+use crate::job::lease_registry::Continuation;
 use crate::mail::bus::Bus;
 use crate::time::clock::Clock;
 
@@ -47,7 +47,14 @@ pub fn adopt(
     set_lifecycle(&mut job.state.borrow_mut(), Lifecycle::Active);
     core.jobs.insert(root_id, job.clone());
     let hooks = Rc::clone(&job.hooks);
-    run_hook(core, bus, clock, id_gen, &job, |ctx| hooks.begin(ctx))
+    run_hook(
+        core,
+        bus,
+        clock,
+        id_gen,
+        &job,
+        Box::new(move |ctx| hooks.begin_effects(ctx)),
+    )
 }
 
 fn continue_job(
@@ -69,9 +76,14 @@ fn continue_job(
     };
     let hooks = Rc::clone(&job.hooks);
     let completion = Rc::new(claim.completion);
-    run_hook(core, bus, clock, id_gen, &job, |ctx| {
-        hooks.on_stage_result(ctx, &stage, completion.clone())
-    })
+    run_hook(
+        core,
+        bus,
+        clock,
+        id_gen,
+        &job,
+        Box::new(move |ctx| hooks.on_stage_effects(ctx, &stage, completion.clone())),
+    )
 }
 
 pub fn keep_unread(core: &mut Core, envelope: &Rc<Envelope>) {
@@ -115,6 +127,6 @@ pub fn resume_due(
     id_gen: &SharedIdGen,
     now_ms: u64,
 ) -> Result<(), BoxError> {
-    let claim = core.book.take_due(now_ms);
+    let claim = core.book.expire_due(now_ms);
     continue_job(core, bus, clock, id_gen, claim)
 }

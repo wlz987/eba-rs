@@ -313,7 +313,7 @@ impl<C> Records<C> {
         }))
     }
 
-    pub fn take_due(&mut self, now_ms: u64) -> Option<Claim<C>> {
+    pub fn expire_due(&mut self, now_ms: u64) -> Option<Claim<C>> {
         nonnegative_int(now_ms, "clock_ms");
         let request_id = self.deadlines.peek_due(now_ms).cloned()?;
         let record = self.finish(&request_id, true).ok()??;

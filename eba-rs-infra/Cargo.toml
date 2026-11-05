@@ -2,7 +2,7 @@
 name = "eba-rs-infra"
 version = "0.6.6"
 edition = "2021"
-description = "EBA 的 no_std/alloc 端口（无 Drive）"
+description = "EBA 的 no_std/alloc 核心；drive feature 提供 tokio Drive"
 keywords = ["runtime", "actor", "message", "no-std"]
 categories = ["concurrency", "no-std"]
 license = "MIT"
@@ -12,9 +12,11 @@ readme = "README.md"
 default = ["std", "uuid"]
 std = []
 uuid = ["dep:uuid", "std"]
+drive = ["std", "dep:tokio"]
 
 [dependencies]
 spin = "0.9"
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"], optional = true }
 uuid = { version = "1", features = ["v4"], optional = true }
 
 [lints]

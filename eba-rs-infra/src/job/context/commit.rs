@@ -1,6 +1,7 @@
 use crate::prelude::*;
 
 use crate::envelope::result::ResultBody;
+use crate::job::effect::Effect;
 use crate::job::job::{Control, Intent};
 
 use super::Context;
@@ -10,6 +11,7 @@ pub struct Commit {
     pub reply: Option<ResultBody>,
     pub control: Option<Control>,
     pub hold: bool,
+    pub effects: Vec<Effect>,
 }
 
 pub fn seal_context(ctx: &Context) -> Commit {
@@ -20,5 +22,6 @@ pub fn seal_context(ctx: &Context) -> Commit {
         reply: buffer.reply.clone(),
         control: buffer.control.clone(),
         hold: buffer.hold.is_some(),
+        effects: ctx.effects(),
     }
 }

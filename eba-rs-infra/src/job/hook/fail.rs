@@ -7,6 +7,7 @@ use crate::envelope::result::err_payload;
 use crate::errors::{combine_failures, BoxError};
 use crate::job::core::Core;
 use crate::job::delivery::{hold_or_send, holds_letter, match_reply, remove};
+use crate::job::finished::apply_finished;
 use crate::job::job::{set_lifecycle, Job, Lifecycle, Notice, SharedIdGen};
 use crate::mail::bus::Bus;
 use crate::Payload;
@@ -26,7 +27,11 @@ pub(super) fn fail_job(
         Ok(body) => body,
         Err(build) => return combine_failures(error, Box::new(build)),
     };
-    if let Err(secondary) = job.hooks.on_finished(Some(&failure)) {
+    let finished = job
+        .hooks
+        .on_finished_effects(Some(&failure))
+        .and_then(|effects| apply_finished(core, &effects));
+    if let Err(secondary) = finished {
         error = combine_failures(error, secondary);
     }
     job.state.borrow_mut().notice = Notice::Finished;

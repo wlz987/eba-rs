@@ -2,18 +2,20 @@
 name = "eba-rs"
 version = "0.6.6"
 edition = "2021"
-description = "进程内、单写者、合作式的 EBA 运行时（std + tokio Drive）"
+description = "EBA 的 std 门面：eba-rs-infra 核心 + tokio Drive"
 keywords = ["runtime", "actor", "message", "single-writer"]
 categories = ["concurrency"]
 license = "MIT"
 readme = "README.md"
 
 [dependencies]
+eba-rs-infra = { path = "../eba-rs-infra", features = ["std", "uuid", "drive"] }
+
+[dev-dependencies]
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
-uuid = { version = "1", features = ["v4"], optional = true }
 
 [features]
-default = ["uuid"]
+default = []
 
 [lints]
 workspace = true

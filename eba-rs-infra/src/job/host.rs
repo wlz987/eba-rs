@@ -60,7 +60,7 @@ pub trait JobHost {
     }
 
     fn unsent_count(&self) -> usize {
-        self.core().borrow().outbox.size()
+        self.core().borrow().mailbox.size()
     }
 
     fn rejected_count(&self) -> usize {

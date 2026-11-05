@@ -36,7 +36,9 @@ use self::deliver::envelope_kind;
 impl Bus {
     pub fn can_publish(&self, envelope: &Rc<Envelope>) -> bool {
         let kind = envelope_kind(envelope);
-        let parts = split_topic(&envelope.header.topic).unwrap_or_default();
+        let Ok(parts) = split_topic(&envelope.header.topic) else {
+            return false;
+        };
         self.routes
             .borrow()
             .snapshot_match(&parts)

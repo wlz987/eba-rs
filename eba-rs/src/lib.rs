@@ -1,20 +1,6 @@
 #![forbid(unsafe_code)]
 
-pub mod collections;
-pub mod drive;
-pub mod envelope;
-pub mod errors;
-pub mod job;
-pub mod mail;
-pub mod notify;
-pub mod park;
-pub mod pattern;
-pub mod rendezvous;
-pub mod runtime;
-pub mod time;
+//! std facade over `eba-rs-infra`: the core plus the tokio `Drive`.
+//! The no_std port uses `eba-rs-infra` directly.
 
-mod wake;
-
-pub use park::Park;
-
-pub type Payload = std::sync::Arc<dyn std::any::Any>;
+pub use eba_rs_infra::*;

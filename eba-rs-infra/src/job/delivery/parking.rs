@@ -7,7 +7,7 @@ use crate::job::ending::{settle_ending, waits_for_book};
 use crate::job::hook::delivery_envelope;
 use crate::job::job::Job;
 
-/// `tests/parking.rs` 的 `the_pending_place_is_marked_minus_one` 就按这个名字问它。
+/// 被暂存待重发的出站信位置：`Pending` 在 `core.pending`，`Rest(n)` 是 `core.rest` 的下标。
 pub enum Slot {
     Pending,
     Rest(usize),
@@ -35,7 +35,7 @@ pub fn holds_letter(core: &Core, envelope: &Rc<Envelope>) -> bool {
 }
 
 pub(super) fn owns(core: &Core, envelope: &Rc<Envelope>) -> bool {
-    holds_letter(core, envelope) || core.outbox.contains(envelope)
+    holds_letter(core, envelope) || core.mailbox.contains(envelope)
 }
 
 pub fn note_delivery_failure(core: &mut Core, envelope: &Rc<Envelope>) -> Result<(), BoxError> {
@@ -47,13 +47,13 @@ pub fn note_delivery_failure(core: &mut Core, envelope: &Rc<Envelope>) -> Result
     core.attempts.insert(key.clone(), count);
     if count < 2 {
         core.again.insert(key);
-        core.outbox.rearm(envelope);
+        core.mailbox.rearm(envelope);
         return Ok(());
     }
     let job = parked_job(core, envelope);
     core.again.remove(&key);
     unpark(core, envelope);
-    core.outbox.bury(envelope);
+    core.mailbox.bury(envelope);
     complete_held(core, job)
 }
 
@@ -111,7 +111,7 @@ pub(super) fn spent(core: &Core, envelope: &Rc<Envelope>) -> bool {
 }
 
 pub fn retry_due(core: &Core) -> bool {
-    core.outbox.has_room() && next_sendable(core).is_some()
+    core.mailbox.has_room() && next_sendable(core).is_some()
 }
 
 pub fn next_sendable(core: &Core) -> Option<(Slot, Rc<Envelope>, Option<Job>)> {

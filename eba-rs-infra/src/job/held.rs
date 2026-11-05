@@ -65,7 +65,7 @@ pub(crate) fn close_held(core: &mut Core) {
             slot
         };
         if let Some(slot) = slot {
-            let _ = slot.cancel("host_closing");
+            let _ = slot.revoke("host_closing");
             slot.close();
         }
     }

@@ -64,7 +64,7 @@ fn deadline(core: &Core, clock: &dyn Clock, timeout: Option<u64>) -> Option<u64>
     Some(nonnegative_int(now + chosen, "deadline_ms"))
 }
 
-/// 补答与否已经被 `commit` 改写过一次。py 的 `tests/test_lifecycle.py` 按名直接问这一句。
+/// 静默结算：不回复，只收尾。补答与否已经被 `commit` 改写过一次。
 pub fn silence(
     core: &Core,
     job: &Job,
@@ -96,6 +96,7 @@ pub(crate) fn commit_to(
     id_gen: &SharedIdGen,
     job: &Job,
     commit: Commit,
+    waiting: bool,
 ) -> Result<(Option<Rc<Envelope>>, Option<Control>), BoxError> {
     if commit.hold {
         return Ok((None, None));
@@ -121,7 +122,7 @@ pub(crate) fn commit_to(
                 deadline(core, clock, intent.timeout),
             )?;
         }
-        if core.book.count(&root.header.id) == 0 {
+        if !waiting && core.book.count(&root.header.id) == 0 {
             control = Some(Control {
                 body: state.borrow().reply_body.clone(),
             });
