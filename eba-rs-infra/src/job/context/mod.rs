@@ -171,6 +171,85 @@ impl Context {
         Ok(Effect::Ask { intent: outcome? })
     }
 
+    // Pure builders: construct an Effect without pushing it, so a handler can
+    // return a declarative effect list (mirrors the ts `*Effect` builders).
+    // Combine with `Effect::apply` / `apply_effects` if you do not return them.
+
+    pub fn reply_effect(&self, body: ResultBody) -> Effect {
+        Effect::Reply(body)
+    }
+
+    pub fn finish_effect(&self, body: Option<ResultBody>) -> Effect {
+        Effect::Finish(body)
+    }
+
+    pub fn hold_effect(
+        &self,
+        deadline_ms: Option<u64>,
+        budget_ms: Option<u64>,
+    ) -> Result<Effect, BoxError> {
+        if !self.effects.borrow().is_empty() {
+            return Err(Box::from(BusError(
+                "cannot hold after other effects".into(),
+            )));
+        }
+        self.edit(|buffer| {
+            if buffer.hold.is_some() {
+                return Err(Box::from(BusError("job already held".into())));
+            }
+            if buffer.control.is_some() || buffer.job.borrow().lifecycle != Lifecycle::Active {
+                return Err(Box::from(BusError("job already finished".into())));
+            }
+            let root = buffer.job.borrow().root.clone();
+            if root.header.address.kind() != "request" {
+                return Err(Box::from(BusError("root is not a request".into())));
+            }
+            if buffer.reply.is_some() || buffer.job.borrow().replied {
+                return Err(Box::from(BusError("root already replied".into())));
+            }
+            if !buffer.requests.is_empty() || buffer.pending_count > 0 {
+                return Err(Box::from(BusError(
+                    "cannot hold with pending requests".into(),
+                )));
+            }
+            Ok(Effect::Hold(JobLease::with_options(deadline_ms, budget_ms)))
+        })
+    }
+
+    pub fn settle_effect(&self, lease: JobLease, body: ResultBody) -> Effect {
+        Effect::Settle(lease, body)
+    }
+
+    pub fn revoke_effect(&self, lease: JobLease, error: alloc::string::String) -> Effect {
+        Effect::Revoke(lease, error)
+    }
+
+    pub fn tell_effect(&self, topic: &str, payload: Payload) -> Effect {
+        Effect::Tell {
+            topic: topic.into(),
+            payload,
+        }
+    }
+
+    pub fn record_effect(&self, topic: &str, payload: Payload) -> Effect {
+        Effect::Record {
+            topic: topic.into(),
+            payload,
+        }
+    }
+
+    pub fn barrier_effect(&self, up_to: Option<u64>) -> Effect {
+        Effect::Barrier { up_to }
+    }
+
+    pub fn timer_effect(&self, deadline_ms: u64) -> Effect {
+        Effect::Timer { deadline_ms }
+    }
+
+    pub fn close_effect(&self, reason: Option<alloc::string::String>) -> Effect {
+        Effect::Close { reason }
+    }
+
     pub(crate) fn push_intent(&self, intent: Intent) -> Result<(), BoxError> {
         let mut buffer = self.buffer.borrow_mut();
         if buffer.id_gen.is_none() {

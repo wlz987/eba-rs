@@ -616,6 +616,106 @@ mod mailbox_busy {
     }
 }
 
+mod context_builders {
+    use super::*;
+    use eba_rs_infra::job::JobHooks;
+
+    // A host whose `begin_effects` is written purely with the `*_effect`
+    // builders and returns the effect list — the exact idiom the eba-harness
+    // uses in ts (`begin(ctx) { const h = ctx.holdEffect(); ...; return [h]; }`).
+    struct BuilderHooks {
+        log: Log,
+        observer_log: Log,
+    }
+
+    impl JobHooks for BuilderHooks {
+        fn begin_effects(&self, ctx: &Context) -> Result<Vec<Effect>, BoxError> {
+            // Pure builders: construct effects without side-effecting.
+            let hold = ctx.hold_effect(None, None)?;
+            let timer = ctx.timer_effect(20);
+            let tell = ctx.tell_effect("side", payload("seen"));
+            match (&hold, &timer, &tell) {
+                (Effect::Hold(lease), Effect::Timer { .. }, Effect::Tell { .. }) => {
+                    let _reply = ctx.reply_effect(ok_payload(payload("peek")));
+                    let _finish = ctx.finish_effect(None);
+                    let settle = ctx.settle_effect(lease.clone(), ok_payload(payload("body")));
+                    assert!(matches!(settle, Effect::Settle(..)));
+                    let revoke = ctx.revoke_effect(lease.clone(), "aborted".to_string());
+                    assert!(matches!(revoke, Effect::Revoke(..)));
+                    let ask = ctx.ask("sub", "side", payload("x"), None)?;
+                    assert!(matches!(ask, Effect::Ask { .. }));
+                }
+                _ => panic!("builders must return the matching effect variants"),
+            }
+            self.log.borrow_mut().push("built".to_string());
+            // Return the pure effects so the runtime applies them.
+            Ok(vec![hold, timer, tell])
+        }
+
+        fn on_resume(&self, _ctx: &Context) -> Result<Vec<Effect>, BoxError> {
+            self.observer_log.borrow_mut().push("resumed".to_string());
+            Ok(Vec::new())
+        }
+    }
+
+    #[test]
+    fn pure_builders_are_applied_and_held() {
+        let build_log = log();
+        let observer_log = log();
+        let clock = Rc::new(ManualClock::new(0));
+        let mut runtime = new_runtime(Bus::default(), clock.clone());
+
+        // An observer that notices the post-hold tell effect.
+        struct ObsHooks {
+            log: Log,
+        }
+        impl JobHooks for ObsHooks {
+            fn begin(&self, _ctx: &Context) -> Result<(), BoxError> {
+                self.log.borrow_mut().push("obs".to_string());
+                Ok(())
+            }
+        }
+        let builder = build_host(
+            "builder",
+            &["task"],
+            Rc::new(BuilderHooks {
+                log: build_log.clone(),
+                observer_log: observer_log.clone(),
+            }),
+            None,
+        );
+        let observer = build_host(
+            "observer",
+            &["side"],
+            Rc::new(ObsHooks {
+                log: observer_log.clone(),
+            }),
+            None,
+        );
+        runtime.add(builder).unwrap();
+        runtime.add(observer).unwrap();
+
+        let pending = runtime
+            .ask("task", payload("now"), actor_id("caller"), None)
+            .unwrap();
+        advance(&mut runtime, &clock, 3, 0);
+        assert!(build_log.borrow().contains(&"built".to_string()));
+        assert!(
+            pending.poll().is_none(),
+            "job must be held via the returned hold effect"
+        );
+
+        // After the timer fires, the post-hold tell must have reached the
+        // observer — proving the pure `tell_effect` was actually applied.
+        clock.advance(20);
+        advance(&mut runtime, &clock, 10, 1);
+        assert!(
+            observer_log.borrow().contains(&"obs".to_string()),
+            "post-hold pure tell_effect must reach the observer"
+        );
+    }
+}
+
 mod mailbox_space {
     use super::*;
     use eba_rs_infra::collections::IndexedMap;
