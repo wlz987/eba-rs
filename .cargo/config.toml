@@ -1,0 +1,3 @@
+[alias]
+cov = "llvm-cov --features std --fail-under-lines 85"
+cov-report = "llvm-cov --features std report"

@@ -1,0 +1,21 @@
+[package]
+name = "eba-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+description = "进程内、单写者、合作式的 EBA 运行时"
+
+[lib]
+name = "eba_rs"
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+
+[profile.release]
+panic = "abort"
+opt-level = 2
